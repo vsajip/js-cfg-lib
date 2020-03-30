@@ -1,0 +1,20 @@
+{
+  "name": "cfg-lib",
+  "version": "0.1.0",
+  "description": "A JavaScript library for working with the CFG configuration format.",
+  "main": "config.js",
+  "scripts": {
+    "test": "mocha --no-color"
+  },
+  "keywords": [
+    "configuration"
+  ],
+  "author": "Vinay Sajip",
+  "license": "BSD-3-Clause",
+  "devDependencies": {
+    "chai": "^4.2.0",
+    "mocha": "^7.1.1",
+    "webpack": "^4.42.1",
+    "webpack-cli": "^3.3.11"
+  }
+}
