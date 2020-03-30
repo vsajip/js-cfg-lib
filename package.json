@@ -17,5 +17,8 @@
     "mocha": "^7.1.1",
     "webpack": "^4.42.1",
     "webpack-cli": "^3.3.11"
+  },
+  "dependencies": {
+    "complex.js": "^2.0.11"
   }
 }
