@@ -4,7 +4,8 @@
   "description": "A JavaScript library for working with the CFG configuration format.",
   "main": "config.js",
   "scripts": {
-    "test": "mocha --no-color"
+    "test": "mocha --no-color",
+    "pack": "webpack config.js --output-library-target window -o dist/config.js"
   },
   "keywords": [
     "configuration"
