@@ -1,11 +1,13 @@
 'use strict';
 
+var path = require('path');
 const stream = require('stream');
 const util = require('util');
+
 const Complex = require('complex.js');
 
 function make_stream(s) {
-  let result = new stream.Readable();
+  let result = new stream.Readable({encoding: 'utf-8'});
 
   // push stuff ready to be read, but only once the consumer is ready
   result._read = () => {
@@ -17,8 +19,8 @@ function make_stream(s) {
 
 class Location {
   constructor(line, column) {
-    this.line = line || 1;
-    this.column = column || 1;
+    this.line = (line === undefined) ? 1 : line;
+    this.column = (column === undefined) ? 1 : column;
   }
 
   next_line() {
@@ -41,8 +43,9 @@ class Location {
 }
 
 class PushBackInfo {
-  constructor(c, loc) {
+  constructor(c, cloc, loc) {
     this.c = c;
+    this.cloc = cloc;
     this.loc = loc;
   }
 }
@@ -150,9 +153,9 @@ const KEYWORDS = {
 };
 
 const KEYWORD_VALUES = {
-  TRUE: true,
-  FALSE: false,
-  NONE: null
+  "true": true,
+  "false": false,
+  "null": null
 };
 
 const ESCAPES = {
@@ -268,22 +271,10 @@ class ParserException extends RecognizerException {}
 class Tokenizer {
   constructor(stream) {
     this.stream = stream;
-    this.decoder = new util.TextDecoder('utf-8');
-    this.decoded = '';
-    this.pos = 0;
     this.pushed_back = [];
     this.char_location = new Location();
     this.location = new Location();
     this._at_end = false;
-    stream.on('data', (chunk) => {
-      if (Buffer.isBuffer(chunk)) {
-        let s = this.decoder.decode(chunk, {stream: true});
-        this.decoded += s;
-      }
-      else {
-        this.decoded += chunk;
-      }
-    });
   }
 
   get_char() {
@@ -291,21 +282,17 @@ class Tokenizer {
 
     if (this.pushed_back.length > 0) {
       let pb = this.pushed_back.pop();
-      this.char_location = pb.loc;
-      this.location = pb.loc;
+      this.char_location.update(pb.cloc);
+      this.location.update(pb.loc);
       result = pb.c;
     } else {
       this.char_location.update(this.location);
-      if (this.pos < this.decoded.length) {
-        result = this.decoded[this.pos++];
-      } else {
-        this.stream.read();
-        if (this.pos < this.decoded.length) {
-          result = this.decoded[this.pos++];
-        } else {
-          result = null;
-          this._at_end = true;
-          }
+      // if (!this.stream.readableFlowing) {
+      //   this.stream.resume();
+      // }
+      result = this.stream.read(1);
+      if (result === null) {
+        this._at_end = true;
       }
       if (result == '\n') {
         this.location.next_line();
@@ -321,8 +308,8 @@ class Tokenizer {
   }
 
   push_back(c) {
-    if ((c !== null) && ((c == '\n') || !is_whitespace(c))) {
-      let pb = new PushBackInfo(c, this.char_location.copy());
+    if ((c == '\n') || !is_whitespace(c)) {
+      let pb = new PushBackInfo(c, this.char_location.copy(), this.location.copy());
 
       this.pushed_back.push(pb);
     }
@@ -516,8 +503,8 @@ class Tokenizer {
         value = text;
         if (text in KEYWORDS) {
           kind = KEYWORDS[text];
-          if (kind in KEYWORD_VALUES) {
-            value = KEYWORD_VALUES[kind];
+          if (text in KEYWORD_VALUES) {
+            value = KEYWORD_VALUES[text];
           }
         }
         break;
@@ -559,7 +546,6 @@ class Tokenizer {
         kind = STRING;
 
         text += c;
-        end_loc.update(this.char_location);
 
         let c1 = this.get_char();
         let c1_loc = this.char_location.copy();
@@ -585,7 +571,7 @@ class Tokenizer {
         let quoter = text;
 
         while (true) {
-          c = this.get_char()
+          c = this.get_char();
           if (c === null) {
             break;
           }
@@ -630,7 +616,6 @@ class Tokenizer {
         if (nc !== '=') {
           kind = ASSIGN;
           text += c;
-          end_loc.update(this.char_location);
           this.push_back(nc);
         } else {
           kind = EQ;

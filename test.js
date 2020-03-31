@@ -1,22 +1,119 @@
 'use strict';
 
-var stream = require('stream');
+const _ = require('lodash');
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const stream = require('stream');
 
-var expect = require('chai').expect;
-var config = require('./config');
-var Location = config.Location;
-var Tokenizer = config.Tokenizer;
-var make_stream = config.make_stream;
-var TokenKind = config.TokenKind;
+const {expect, assert} = require('chai');
+
+const config = require('./config');
+const Location = config.Location;
+const Tokenizer = config.Tokenizer;
+const Token = config.Token;
+const make_stream = config.make_stream;
+const TokenKind = config.TokenKind;
 
 function make_tokenizer(s) {
   return new Tokenizer(make_stream(s));
 }
 
 function compare_locs(loc1, loc2) {
-  // expect(loc1.line).to.equal(loc2.line);
-  // expect(loc1.column).to.equal(loc2.column);
   expect(loc1).to.eql(loc2);
+}
+
+function compare_objects(o1, o2, ctx) {
+  if (ctx === undefined) {
+    ctx = '';
+  } else {
+    ctx = ` at ${ctx}`;
+  }
+  if (!_.isEqual(o1, o2)) {
+    console.log('about to fail:');
+  }
+  assert(_.isEqual(o1, o2), `not the same${ctx}: ${o1} !== ${o2}`);
+}
+
+function compare_arrays(a1, a2) {
+  expect(a1.length).to.equal(a2.length);
+  for (let i = 0; i < a1.length; i++) {
+    compare_objects(a1[i], a2[i], i);
+  }
+}
+
+function data_file_path(name) {
+  let d = path.join(process.cwd(), 'resources')
+
+  return path.join(d, name);
+}
+
+function collect_tokens(tokenizer) {
+  let result = [];
+
+  while (true) {
+    let t = tokenizer.get_token();
+
+    result.push(t);
+    if (t.kind === TokenKind.EOF) {
+      break;
+    }
+  }
+  return result;
+}
+
+function make_token(k, t, v, sl, sc, el, ec) {
+  let result = new Token(k, t, v);
+
+  result.start.line = sl;
+  result.start.column = sc;
+  result.end.line = el;
+  result.end.column = ec;
+  return result;
+}
+
+const SEPARATOR_PATTERN = /^-- ([A-Z]\d+) -+/;
+
+function load_data(path, resolver) {
+  let result = {};
+  let f = fs.createReadStream(path);
+  let reader = readline.createInterface({input: f});
+  let key = null;
+  let value = [];
+
+  function process_line(line) {
+    let m = line.match(SEPARATOR_PATTERN);
+
+    if (m === null) {
+      value.push(line);
+    } else {
+      if ((key !== null) && (value.length > 0)) {
+        result[key] = value.join('\n');
+      }
+      key = m[1];
+      value.length = 0;
+    }
+  }
+
+  let p = new Promise((resolve) => {
+    reader.on('line', process_line);
+    reader.on('close', function() {
+      resolve(result);
+    });
+  });
+  p.then(function(result) {
+    resolver(result);
+  });
+}
+
+function open_file(path, resolver) {
+  let f = fs.createReadStream(path, {encoding: 'utf-8'});
+  let p = new Promise((resolve) => {
+    f.on('readable', function() {
+      resolve(f);
+    });
+  });
+  p.then(function(f) { resolver(f); });
 }
 
 describe('Location', function () {
@@ -173,17 +270,8 @@ describe('Tokenizer', function () {
 
   it('should handle punctuation', function () {
     let s = '< > { } [ ] ( ) + - * / ** // % . <= <> << >= >> == != , : @ ~ & | ^ $ && ||';
-    let tokens = [];
     let tokenizer = make_tokenizer(s);
-
-    while (true) {
-      let t = tokenizer.get_token();
-
-      tokens.push(t);
-      if (t.kind === TokenKind.EOF) {
-        break;
-      }
-    }
+    let tokens = collect_tokens(tokenizer);
     let kinds = tokens.map(t => t.kind);
     let expected = [TokenKind.LT, TokenKind.GT, TokenKind.LCURLY, TokenKind.RCURLY,
                     TokenKind.LBRACK, TokenKind.RBRACK, TokenKind.LPAREN, TokenKind.RPAREN,
@@ -224,5 +312,96 @@ describe('Tokenizer', function () {
     expected = s.split(' ');
     expected.push('');
     expect(texts).to.eql(expected);
+  });
+
+  it('should handle examples in data', function () {
+    let dp = data_file_path('testdata.txt');
+    let expected = {
+      'C16': [
+        make_token(TokenKind.WORD, 'test', 'test', 1, 1, 1, 4),
+        make_token(TokenKind.COLON, ':', undefined, 1, 6, 1, 6),
+        make_token(TokenKind.FALSE, "false", false, 1, 8, 1, 12),
+        make_token(TokenKind.NEWLINE, '\n', undefined, 1, 13, 2, 0),
+        make_token(TokenKind.WORD, 'another_test', 'another_test', 2, 1, 2, 12),
+        make_token(TokenKind.COLON, ':', undefined, 2, 13, 2, 13),
+        make_token(TokenKind.TRUE, "true", true, 2, 15, 2, 18),
+        make_token(TokenKind.EOF, '', undefined, 2, 19, 2, 19)
+      ],
+      'C17': [
+        make_token(TokenKind.WORD, 'test', 'test', 1, 1, 1, 4),
+        make_token(TokenKind.COLON, ':', undefined, 1, 6, 1, 6),
+        make_token(TokenKind.NONE, 'null', null, 1, 8, 1, 11),
+        make_token(TokenKind.EOF, '', undefined, 1, 12, 1, 12)
+      ],
+      'C25': [
+        make_token(TokenKind.WORD, 'unicode', 'unicode', 1, 1, 1, 7),
+        make_token(TokenKind.ASSIGN, '=', undefined, 1, 9, 1, 9),
+        make_token(TokenKind.STRING, "'Grüß Gott'", 'Grüß Gott', 1, 11, 1, 21),
+        make_token(TokenKind.NEWLINE, '\n', undefined, 1, 22, 2, 0),
+        make_token(TokenKind.WORD, 'more_unicode', 'more_unicode', 2, 1, 2, 12),
+        make_token(TokenKind.COLON, ':', undefined, 2, 13, 2, 13),
+        make_token(TokenKind.STRING, "'Øresund'", 'Øresund', 2, 15, 2, 23),
+        make_token(TokenKind.EOF, '', undefined, 2, 24, 2, 24)
+      ]
+    }
+    load_data(dp, function(data) {
+      let keys = Object.keys(data);
+
+      keys.sort();
+      keys.forEach(function(key) {
+        if (key in expected) {
+          let tokenizer = make_tokenizer(data[key]);
+          let tokens = collect_tokens(tokenizer);
+
+          compare_arrays(tokens, expected[key]);
+        }
+      });
+    });
+  });
+
+  it('should handle locations', function() {
+    let dp = data_file_path('pos.forms.cfg.txt');
+    let f = fs.createReadStream(dp);
+    let reader = readline.createInterface({input: f});
+    let positions = [];
+
+    function process_line(line) {
+      let parts = line.split(' ');
+      // can't just pass in parseInt, as the other callback args shouldn't be forwarded
+      let ints = parts.map(function(s) { return parseInt(s); });
+      positions.push(ints);
+    }
+
+    let p = new Promise((resolve) => {
+      reader.on('line', process_line);
+      reader.on('close', function() {
+        resolve(positions);
+      });
+    });
+    p.then(function(expected) {
+      dp = data_file_path('forms.cfg');
+
+      open_file(dp, function(f) {
+        let tokenizer = new Tokenizer(f);
+        let i = 0;
+  
+        while (true) {
+          let e = expected[i++];
+          let t = tokenizer.get_token();
+  
+          let sp = new Location(e[0], e[1]);
+          let ep = new Location(e[2], e[3]);
+
+          // if (i === 2501) {
+          //   console.log('Failing entry');
+          // }
+          compare_objects(t.start, sp, i);
+          compare_objects(t.end, ep, i);
+          if (t.kind == TokenKind.EOF) {
+            break;
+          }
+        }
+      });
+    });
   });
 });
