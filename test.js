@@ -6,13 +6,18 @@ const path = require('path');
 const readline = require('readline');
 const stream = require('stream');
 
-const {expect, assert} = require('chai');
+const {
+  expect,
+  assert
+} = require('chai');
 
 const config = require('./config');
 const Location = config.Location;
 const Tokenizer = config.Tokenizer;
 const Token = config.Token;
 const make_stream = config.make_stream;
+const make_file_stream = config.make_file_stream;
+
 const TokenKind = config.TokenKind;
 
 function make_tokenizer(s) {
@@ -77,7 +82,9 @@ const SEPARATOR_PATTERN = /^-- ([A-Z]\d+) -+/;
 function load_data(path, resolver) {
   let result = {};
   let f = fs.createReadStream(path);
-  let reader = readline.createInterface({input: f});
+  let reader = readline.createInterface({
+    input: f
+  });
   let key = null;
   let value = [];
 
@@ -97,23 +104,27 @@ function load_data(path, resolver) {
 
   let p = new Promise((resolve) => {
     reader.on('line', process_line);
-    reader.on('close', function() {
+    reader.on('close', function () {
       resolve(result);
     });
   });
-  p.then(function(result) {
+  p.then(function (result) {
     resolver(result);
   });
 }
 
 function open_file(path, resolver) {
-  let f = fs.createReadStream(path, {encoding: 'utf-8'});
+  let f = fs.createReadStream(path, {
+    encoding: 'utf-8'
+  });
   let p = new Promise((resolve) => {
-    f.on('readable', function() {
+    f.on('readable', function () {
       resolve(f);
     });
   });
-  p.then(function(f) { resolver(f); });
+  p.then(function (f) {
+    resolver(f);
+  });
 }
 
 describe('Location', function () {
@@ -274,14 +285,15 @@ describe('Tokenizer', function () {
     let tokens = collect_tokens(tokenizer);
     let kinds = tokens.map(t => t.kind);
     let expected = [TokenKind.LT, TokenKind.GT, TokenKind.LCURLY, TokenKind.RCURLY,
-                    TokenKind.LBRACK, TokenKind.RBRACK, TokenKind.LPAREN, TokenKind.RPAREN,
-                    TokenKind.PLUS, TokenKind.MINUS, TokenKind.STAR, TokenKind.SLASH,
-                    TokenKind.POWER, TokenKind.SLASHSLASH, TokenKind.MODULO, TokenKind.DOT,
-                    TokenKind.LE, TokenKind.ALT_NEQ, TokenKind.LSHIFT, TokenKind.GE,
-                    TokenKind.RSHIFT, TokenKind.EQ, TokenKind.NEQ, TokenKind.COMMA,
-                    TokenKind.COLON, TokenKind.AT, TokenKind.TILDE, TokenKind.BITAND,
-                    TokenKind.BITOR, TokenKind.BITXOR, TokenKind.DOLLAR, TokenKind.AND,
-                    TokenKind.OR, TokenKind.EOF];
+      TokenKind.LBRACK, TokenKind.RBRACK, TokenKind.LPAREN, TokenKind.RPAREN,
+      TokenKind.PLUS, TokenKind.MINUS, TokenKind.STAR, TokenKind.SLASH,
+      TokenKind.POWER, TokenKind.SLASHSLASH, TokenKind.MODULO, TokenKind.DOT,
+      TokenKind.LE, TokenKind.ALT_NEQ, TokenKind.LSHIFT, TokenKind.GE,
+      TokenKind.RSHIFT, TokenKind.EQ, TokenKind.NEQ, TokenKind.COMMA,
+      TokenKind.COLON, TokenKind.AT, TokenKind.TILDE, TokenKind.BITAND,
+      TokenKind.BITOR, TokenKind.BITXOR, TokenKind.DOLLAR, TokenKind.AND,
+      TokenKind.OR, TokenKind.EOF
+    ];
     expect(kinds).to.eql(expected);
     let texts = tokens.map(t => t.text);
     expected = s.split(' ');
@@ -304,8 +316,9 @@ describe('Tokenizer', function () {
     }
     let kinds = tokens.map(t => t.kind);
     let expected = [TokenKind.TRUE, TokenKind.FALSE, TokenKind.NONE, TokenKind.IS,
-                    TokenKind.IN, TokenKind.NOT, TokenKind.AND, TokenKind.OR,
-                    TokenKind.EOF];
+      TokenKind.IN, TokenKind.NOT, TokenKind.AND, TokenKind.OR,
+      TokenKind.EOF
+    ];
 
     expect(kinds).to.eql(expected);
     let texts = tokens.map(t => t.text);
@@ -344,11 +357,11 @@ describe('Tokenizer', function () {
         make_token(TokenKind.EOF, '', undefined, 2, 24, 2, 24)
       ]
     }
-    load_data(dp, function(data) {
+    load_data(dp, function (data) {
       let keys = Object.keys(data);
 
       keys.sort();
-      keys.forEach(function(key) {
+      keys.forEach(function (key) {
         if (key in expected) {
           let tokenizer = make_tokenizer(data[key]);
           let tokens = collect_tokens(tokenizer);
@@ -359,49 +372,162 @@ describe('Tokenizer', function () {
     });
   });
 
-  it('should handle locations', function() {
+  it('should handle locations', function () {
     let dp = data_file_path('pos.forms.cfg.txt');
     let f = fs.createReadStream(dp);
-    let reader = readline.createInterface({input: f});
+    let reader = readline.createInterface({
+      input: f
+    });
     let positions = [];
 
     function process_line(line) {
       let parts = line.split(' ');
       // can't just pass in parseInt, as the other callback args shouldn't be forwarded
-      let ints = parts.map(function(s) { return parseInt(s); });
+      let ints = parts.map(function (s) {
+        return parseInt(s);
+      });
       positions.push(ints);
     }
 
     let p = new Promise((resolve) => {
       reader.on('line', process_line);
-      reader.on('close', function() {
+      reader.on('close', function () {
         resolve(positions);
       });
     });
-    p.then(function(expected) {
-      dp = data_file_path('forms.cfg');
+    p.then(function (expected) {
+      let dp = data_file_path('forms.cfg');
+      let f = make_file_stream(dp);
+      let tokenizer = new Tokenizer(f);
+      let i = 0;
 
-      open_file(dp, function(f) {
-        let tokenizer = new Tokenizer(f);
-        let i = 0;
-  
-        while (true) {
-          let e = expected[i++];
-          let t = tokenizer.get_token();
-  
-          let sp = new Location(e[0], e[1]);
-          let ep = new Location(e[2], e[3]);
+      while (true) {
+        let e = expected[i++];
+        let t = tokenizer.get_token();
 
-          // if (i === 2501) {
-          //   console.log('Failing entry');
-          // }
-          compare_objects(t.start, sp, i);
-          compare_objects(t.end, ep, i);
-          if (t.kind == TokenKind.EOF) {
-            break;
-          }
+        let sp = new Location(e[0], e[1]);
+        let ep = new Location(e[2], e[3]);
+
+        // if (i === 2501) {
+        //   console.log('Failing entry');
+        // }
+        compare_objects(t.start, sp, i);
+        compare_objects(t.end, ep, i);
+        if (t.kind == TokenKind.EOF) {
+          break;
         }
-      });
+      }
+    });
+  });
+
+  it('should handle bad tokens', function () {
+    let bad_numbers = [
+      ['9a', 'Invalid character in number', 1, 2],
+      ['079', 'Invalid character in number', 1, 1],
+      ['0xaBcz', 'Invalid character in number', 1, 6],
+      ['0o79', 'Invalid character in number', 1, 4],
+      ['.5z', 'Invalid character in number', 1, 3],
+      ['0.5.7', 'Invalid character in number', 1, 4],
+      [' 0.4e-z', 'Invalid character in number', 1, 7],
+      [' 0.4e-8.3', 'Invalid character in number', 1, 8],
+      [' 089z', 'Invalid character in number', 1, 5],
+      ['0o89z', 'Invalid character in number', 1, 3],
+      ['0X89g', 'Invalid character in number', 1, 5],
+      ['10z', 'Invalid character in number', 1, 3],
+      [' 0.4e-8Z', 'Invalid character in number: Z', 1, 8],
+      ['123_', "Invalid '_' at end of number: 123_", 1, 4],
+      ['1__23', "Invalid '_' in number: 1__", 1, 3],
+      ['1_2__3', "Invalid '_' in number: 1_2__", 1, 5],
+      [' 0.4e-8_', "Invalid '_' at end of number: 0.4e-8_", 1, 8],
+      [' 0.4_e-8', "Invalid '_' at end of number: 0.4_", 1, 5],
+      [' 0._4e-8', "Invalid '_' in number: 0._", 1, 4],
+      ['\\ ', 'Unexpected character: \\', 1, 2]
+    ];
+
+    bad_numbers.forEach(function (c) {
+      let tokenizer = make_tokenizer(c[0]);
+      try {
+        let t = tokenizer.get_token();
+      } catch (e) {
+        expect(e.message).to.have.string(c[1]);
+        let pos = new Location(c[2], c[3]);
+        compare_locs(e.location, pos);
+      }
+    });
+
+    let bad_strings = [
+      ["\'", "Unterminated quoted string:",1, 1],
+      ["\"", "Unterminated quoted string:",1, 1],
+      ["\'\'\'", "Unterminated quoted string:", 1, 1],
+      ["  ;", "Unexpected character: ", 1, 3],
+      ["\"abc", "Unterminated quoted string: ", 1, 1],
+      ["\"abc\\\ndef", "Unterminated quoted string: ", 1, 1]
+    ];
+
+    bad_strings.forEach(function (c) {
+      let tokenizer = make_tokenizer(c[0]);
+      try {
+        let t = tokenizer.get_token();
+      } catch (e) {
+        expect(e.message).to.have.string(c[1]);
+        let pos = new Location(c[2], c[3]);
+        compare_locs(e.location, pos);
+      }
+    });
+  });
+
+  it('should handle escapes', function() {
+    let cases = [
+      ["'\\a'", "\u0007"],
+      ["'\\b'", "\b"],
+      ["'\\f'", "\u000C"],
+      ["'\\n'", "\n"],
+      ["'\\r'", "\r"],
+      ["'\\t'", "\t"],
+      ["'\\v'", "\u000B"],
+      ["'\\\\'", "\\"],
+      ["'\\''", "'"],
+      ["'\\\"'", "\""],
+      ["'\\xAB'", "\u00AB"],
+      ["'\\u2803'", "\u2803"],
+      ["'\\u28A0abc\\u28A0'", "\u28a0abc\u28a0"],
+      ["'\\u28A0abc'", "\u28a0abc"],
+      ["'\\uE000'", "\ue000"],
+      // Note: 32-bit Unicode is supported via surrogate pairs
+      ["'\\U0010ffff'", "\udbff\udfff"]
+    ];
+
+    cases.forEach(function(c) {
+      let tokenizer = make_tokenizer(c[0]);
+      let t = tokenizer.get_token();
+
+      expect(t.value).to.equal(c[1], `failed for ${c[0]}`);
+    });
+
+    let bad_cases = [
+      "'\\z'",
+      "'\\x'",
+      "'\\xa'",
+      "'\\xaz'",
+      "'\\u'",
+      "'\\u0'",
+      "'\\u01'",
+      "'\\u012'",
+      "'\\u012z'",
+      "'\\u012zA'",
+      "'\\ud800'",
+      "'\\udfff'",
+      "'\\U00110000'"
+    ];
+
+    bad_cases.forEach(function(c) {
+      let tokenizer = make_tokenizer(c);
+
+      try {
+        let t = tokenizer.get_token();
+      } catch (e) {
+        expect(e.message).to.have.string('Invalid escape sequence', `failed for ${c}`);
+      }
     });
   });
 });

@@ -1,5 +1,6 @@
 'use strict';
 
+var fs = require('fs');
 var path = require('path');
 const stream = require('stream');
 const util = require('util');
@@ -15,6 +16,11 @@ function make_stream(s) {
     result.push(null);
   };
   return result;
+}
+
+function make_file_stream(p) {
+  let s = fs.readFileSync(p, {encoding: 'utf-8'});
+  return make_stream(s);
 }
 
 class Location {
@@ -237,11 +243,7 @@ function parse_escapes(inp) {
             failed = true;
             break;
           }
-          if (j < 0x10000) {
-            sb += String.fromCharCode(j);
-          } else {
-            throw new TokenizerException('Error handling surrogate pair');
-          }
+          sb += String.fromCodePoint(j);
           i += slen;
         } catch (fe) {
           failed = true;
@@ -787,6 +789,7 @@ TokenKind.BITXOR = BITXOR;
 
 module.exports = {
   make_stream: make_stream,
+  make_file_stream: make_file_stream,
   Location: Location,
   TokenKind: TokenKind,
   Token: Token,
