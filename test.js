@@ -1,10 +1,12 @@
 'use strict';
 
-const _ = require('lodash');
 const fs = require('fs');
 const path = require('path');
 const readline = require('readline');
 const stream = require('stream');
+
+const Complex = require('complex.js');
+const _ = require('lodash');
 
 const {
   expect,
@@ -257,6 +259,19 @@ describe('Tokenizer', function () {
       expect(t.value).to.equal(c[1] || parseFloat(c[0]));
       t = tokenizer.get_token();
       expect(t.kind).to.equal(TokenKind.EOF);
+    });
+  });
+
+  it('should handle complex literals', function() {
+    let cases = [
+      ['4.3j', new Complex(0, 4.3)]
+    ];
+
+    cases.forEach(function(c) {
+      let tokenizer = make_tokenizer(c[0]);
+      let t = tokenizer.get_token();
+
+      expect(t.value).to.eql(c[1]);
     });
   });
 
