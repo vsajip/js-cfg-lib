@@ -8,7 +8,9 @@ const util = require('util');
 const Complex = require('complex.js');
 
 function make_stream(s) {
-  let result = new stream.Readable({encoding: 'utf-8'});
+  let result = new stream.Readable({
+    encoding: 'utf-8'
+  });
 
   // push stuff ready to be read, but only once the consumer is ready
   result._read = () => {
@@ -19,7 +21,9 @@ function make_stream(s) {
 }
 
 function make_file_stream(p) {
-  let s = fs.readFileSync(p, {encoding: 'utf-8'});
+  let s = fs.readFileSync(p, {
+    encoding: 'utf-8'
+  });
   return make_stream(s);
 }
 
@@ -107,9 +111,15 @@ const BITAND = '&';
 const BITOR = '|';
 const BITXOR = '^';
 
-class Token {
-  constructor(kind, text, value) {
+class ASTNode {
+  constructor(kind) {
     this.kind = kind;
+  }
+}
+
+class Token extends ASTNode {
+  constructor(kind, text, value) {
+    super(kind);
     this.text = text;
     this.value = value;
     this.start = new Location();
@@ -148,20 +158,20 @@ const PUNCTUATION = {
 };
 
 const KEYWORDS = {
-  "true": TRUE,
-  "false": FALSE,
-  "null": NONE,
-  "is": IS,
-  "in": IN,
-  "not": NOT,
-  "and": AND,
-  "or": OR
+  'true': TRUE,
+  'false': FALSE,
+  'null': NONE,
+  'is': IS,
+  'in': IN,
+  'not': NOT,
+  'and': AND,
+  'or': OR
 };
 
 const KEYWORD_VALUES = {
-  "true": true,
-  "false": false,
-  "null": null
+  'true': true,
+  'false': false,
+  'null': null
 };
 
 const ESCAPES = {
@@ -651,7 +661,7 @@ class Tokenizer {
             let gn = this.get_number(text, start_loc, end_loc);
             kind = gn[0];
             text = gn[1];
-            value = gn[2];    
+            value = gn[2];
           }
         } else if (c === '<') {
           c = this.get_char();
@@ -737,6 +747,199 @@ class Tokenizer {
   }
 }
 
+const EXPRESSION_STARTERS = new Set();
+
+[
+  LCURLY, LBRACK, LPAREN, AT, DOLLAR, BACKTICK, PLUS, MINUS, TILDE, INTEGER, FLOAT, COMPLEX,
+  TRUE, FALSE, NONE, NOT, STRING, WORD
+].forEach(tk => EXPRESSION_STARTERS.add(tk));
+
+const VALUE_STARTERS = new Set();
+[
+  WORD, INTEGER, FLOAT, COMPLEX, STRING, BACKTICK, NONE, TRUE, FALSE
+].forEach(tk => EXPRESSION_STARTERS.add(tk));
+
+class UnaryNode extends ASTNode {
+  constructor(kind, operand) {
+    super(kind);
+    this.operand = operand;
+  }
+
+  toString() {
+    return `UnaryNode(${this.kind}, ${this.operand})`;
+  }
+}
+
+class BinaryNode extends ASTNode {
+  constructor(kind, left, right) {
+    super(kind);
+    this.left = left;
+    this.right = right;
+  }
+
+  toString() {
+    return `BinaryNode(${this.kind}, ${this.left}, ${this.right})`;
+  }
+}
+
+class SliceNode extends ASTNode {
+  constructor(start, stop, step) {
+    super(COLON);
+    this.startIndex = start;
+    this.stopIndex = stop;
+    this.step = step;
+  }
+
+  toString() {
+    return `SliceNode(${this.startIndex}:${this.stopIndex}:${this.step})`
+  }
+}
+
+class ListNode extends ASTNode {
+  constructor(elements) {
+    super(LBRACK);
+    this.elements = elements;
+  }
+}
+
+class MappingNode extends ASTNode {
+  constructor(elements) {
+    super(LCURLY);
+    this.elements = elements;
+  }
+}
+
+class Parser {
+  constructor(stream) {
+    this.tokenizer = new Tokenizer(stream);
+    this.next = tokenizer.get_token();
+  }
+
+  at_end() {
+    return this.next.kind == EOF;
+  }
+
+  advance() {
+    this.next = this.tokenizer.get_token();
+    return this.next.kind;
+  }
+
+  expect(kind) {
+    let n = this.next;
+    if (n.kind !== kind) {
+      let e = ParserException(`expected ${kind} but got ${n.kind}`);
+
+      e.location = n.start;
+      throw e;
+    }
+    let result = n;
+    this.advance();
+    return result;
+  }
+
+  consume_newlines() {
+    var result = this.next.kind;
+
+    while (result == NEWLINE) {
+      result = this.advance();
+    }
+    return result;
+  }
+
+  strings() {
+    let result = this.next;
+
+    if (this.advance() == STRING) {
+      let allText = '';
+      let allValue = '';
+      let kind;
+      let end;
+      let t = result.text;
+      let v = result.value;
+      let start = result.start;
+
+      do {
+        allText += t;
+        allValue += v;
+        t = this.next.text;
+        v = this.next.value;
+        end = this.next.end;
+        kind = this.advance();
+      } while (kind == STRING);
+      allText += t; // the last one
+      allValue += v;
+      result = new Token(STRING, allText, allValue);
+      result.start.update(start);
+      result.end.update(end);
+    }
+    return result;
+  }
+
+  value() {
+    let kind = this.next.kind;
+    let t;
+
+    if (!VALUE_STARTERS.has(kind)) {
+      let e = new ParserException(`Unexpected when looking for value: ${kind}`);
+
+      e.location = this.next.start;
+      throw e;
+    }
+
+    if (kind === STRING) {
+      t = this.strings();
+    } else {
+      t = this.next;
+      this.advance();
+    }
+    return t;
+  }
+
+  atom() {
+    let kind = this.next.kind;
+    let result;
+
+    switch (kind) {
+      case LCURLY:
+        result = this.mapping();
+        break;
+      case LBRACK:
+        result = this.list();
+        break;
+      case DOLLAR:
+        this.advance();
+        this.expect(LCURLY);
+        let spos = this.next.start;
+        result = new UnaryNode(DOLLAR, this.primary());
+        result.start = spos;
+        this.expect(LCURLY);
+        break;
+      case WORD:
+      case INTEGER:
+      case FLOAT:
+      case COMPLEX:
+      case STRING:
+      case BACKTICK:
+      case TRUE:
+      case FALSE:
+      case NONE:
+        result = this.value();
+        break;
+      case LPAREN:
+        this.advance();
+        result = this.expr();
+        this.expect(RPAREN);
+      default:
+        let e = new ParserException(`Unexpected: ${kind}`);
+
+        e.location = this.next.start;
+        throw e;
+    }
+    return result;
+  }
+
+}
+
 var TokenKind = new Object();
 TokenKind.EOF = EOF;
 TokenKind.WORD = WORD;
@@ -793,5 +996,6 @@ module.exports = {
   Location: Location,
   TokenKind: TokenKind,
   Token: Token,
-  Tokenizer: Tokenizer
+  Tokenizer: Tokenizer,
+  Parser: Parser
 };
