@@ -17,20 +17,21 @@ const config = require('./config');
 const Location = config.Location;
 const Tokenizer = config.Tokenizer;
 const Token = config.Token;
-const make_stream = config.make_stream;
-const make_file_stream = config.make_file_stream;
+const Parser = config.Parser;
+const makeStream = config.makeStream;
+const makeFileStream = config.makeFileStream;
 
 const TokenKind = config.TokenKind;
 
-function make_tokenizer(s) {
-  return new Tokenizer(make_stream(s));
+function makeTokenizer(s) {
+  return new Tokenizer(makeStream(s));
 }
 
-function compare_locs(loc1, loc2) {
+function compareLocs(loc1, loc2) {
   expect(loc1).to.eql(loc2);
 }
 
-function compare_objects(o1, o2, ctx) {
+function compareObjects(o1, o2, ctx) {
   if (ctx === undefined) {
     ctx = '';
   } else {
@@ -42,24 +43,24 @@ function compare_objects(o1, o2, ctx) {
   assert(_.isEqual(o1, o2), `not the same${ctx}: ${o1} !== ${o2}`);
 }
 
-function compare_arrays(a1, a2) {
+function compareArrays(a1, a2) {
   expect(a1.length).to.equal(a2.length);
   for (let i = 0; i < a1.length; i++) {
-    compare_objects(a1[i], a2[i], i);
+    compareObjects(a1[i], a2[i], i);
   }
 }
 
-function data_file_path(name) {
+function dataFilePath(name) {
   let d = path.join(process.cwd(), 'resources')
 
   return path.join(d, name);
 }
 
-function collect_tokens(tokenizer) {
+function collectTokens(tokenizer) {
   let result = [];
 
   while (true) {
-    let t = tokenizer.get_token();
+    let t = tokenizer.getToken();
 
     result.push(t);
     if (t.kind === TokenKind.EOF) {
@@ -69,7 +70,7 @@ function collect_tokens(tokenizer) {
   return result;
 }
 
-function make_token(k, t, v, sl, sc, el, ec) {
+function makeToken(k, t, v, sl, sc, el, ec) {
   let result = new Token(k, t, v);
 
   result.start.line = sl;
@@ -81,7 +82,7 @@ function make_token(k, t, v, sl, sc, el, ec) {
 
 const SEPARATOR_PATTERN = /^-- ([A-Z]\d+) -+/;
 
-function load_data(path, resolver) {
+function loadData(path, resolver) {
   let result = {};
   let f = fs.createReadStream(path);
   let reader = readline.createInterface({
@@ -149,20 +150,20 @@ describe('Location', function () {
 });
 
 describe('Tokenizer', function () {
-  it('should handle at_end', function () {
-    let t = new Tokenizer(make_stream(''));
+  it('should handle atEnd', function () {
+    let t = new Tokenizer(makeStream(''));
 
-    expect(t.at_end()).to.equal(false);
-    let c = t.get_char();
+    expect(t.atEnd()).to.equal(false);
+    let c = t.getChar();
     expect(c).to.equal(null);
-    expect(t.at_end()).to.equal(true);
+    expect(t.atEnd()).to.equal(true);
   });
 
   it('should handle empty input', function () {
-    let tokenizer = make_tokenizer('');
-    let t = tokenizer.get_token();
+    let tokenizer = makeTokenizer('');
+    let t = tokenizer.getToken();
     expect(t.kind).to.equal(TokenKind.EOF);
-    t = tokenizer.get_token();
+    t = tokenizer.getToken();
     expect(t.kind).to.equal(TokenKind.EOF);
   });
 
@@ -170,11 +171,11 @@ describe('Tokenizer', function () {
     let cases = ['# a comment\n', '# another comment', '# yet another comment\r'];
 
     cases.forEach(function (c) {
-      let tokenizer = make_tokenizer(c);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c);
+      let t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.NEWLINE);
       expect(t.text).to.equal(c.trim());
-      t = tokenizer.get_token();
+      t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.EOF);
     });
   });
@@ -192,11 +193,11 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function (c) {
-      let tokenizer = make_tokenizer(c);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c);
+      let t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.WORD);
       expect(t.text).to.equal(c);
-      t = tokenizer.get_token();
+      t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.EOF);
     });
   });
@@ -210,12 +211,12 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function (c) {
-      let tokenizer = make_tokenizer(c[0]);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c[0]);
+      let t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.STRING);
       expect(t.text).to.equal(c[0]);
       expect(t.value).to.equal(c[1]);
-      t = tokenizer.get_token();
+      t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.EOF);
     });
   });
@@ -229,13 +230,13 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function (c) {
-      let tokenizer = make_tokenizer(c[0]);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c[0]);
+      let t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.STRING);
       expect(t.text).to.equal(c[0]);
       expect(t.value).to.equal('');
-      compare_locs(t.end, new Location(c[1], c[2]));
-      t = tokenizer.get_token();
+      compareLocs(t.end, new Location(c[1], c[2]));
+      t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.EOF);
     });
   });
@@ -252,12 +253,12 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function (c) {
-      let tokenizer = make_tokenizer(c[0]);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c[0]);
+      let t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.FLOAT);
       expect(t.text).to.equal(c[0]);
       expect(t.value).to.equal(c[1] || parseFloat(c[0]));
-      t = tokenizer.get_token();
+      t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.EOF);
     });
   });
@@ -268,8 +269,8 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function(c) {
-      let tokenizer = make_tokenizer(c[0]);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c[0]);
+      let t = tokenizer.getToken();
 
       expect(t.value).to.eql(c[1]);
     });
@@ -284,20 +285,20 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function (c) {
-      let tokenizer = make_tokenizer(c[0]);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c[0]);
+      let t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.INTEGER);
       expect(t.text).to.equal(c[0]);
       expect(t.value).to.equal(c[1] || parseFloat(c[0]), `failed for ${c[0]}`);
-      t = tokenizer.get_token();
+      t = tokenizer.getToken();
       expect(t.kind).to.equal(TokenKind.EOF);
     });
   });
 
   it('should handle punctuation', function () {
     let s = '< > { } [ ] ( ) + - * / ** // % . <= <> << >= >> == != , : @ ~ & | ^ $ && ||';
-    let tokenizer = make_tokenizer(s);
-    let tokens = collect_tokens(tokenizer);
+    let tokenizer = makeTokenizer(s);
+    let tokens = collectTokens(tokenizer);
     let kinds = tokens.map(t => t.kind);
     let expected = [TokenKind.LT, TokenKind.GT, TokenKind.LCURLY, TokenKind.RCURLY,
       TokenKind.LBRACK, TokenKind.RBRACK, TokenKind.LPAREN, TokenKind.RPAREN,
@@ -319,10 +320,10 @@ describe('Tokenizer', function () {
   it('should handle keywords', function () {
     let s = 'true false null is in not and or';
     let tokens = [];
-    let tokenizer = make_tokenizer(s);
+    let tokenizer = makeTokenizer(s);
 
     while (true) {
-      let t = tokenizer.get_token();
+      let t = tokenizer.getToken();
 
       tokens.push(t);
       if (t.kind === TokenKind.EOF) {
@@ -343,52 +344,52 @@ describe('Tokenizer', function () {
   });
 
   it('should handle examples in data', function () {
-    let dp = data_file_path('testdata.txt');
+    let dp = dataFilePath('testdata.txt');
     let expected = {
       'C16': [
-        make_token(TokenKind.WORD, 'test', 'test', 1, 1, 1, 4),
-        make_token(TokenKind.COLON, ':', undefined, 1, 6, 1, 6),
-        make_token(TokenKind.FALSE, "false", false, 1, 8, 1, 12),
-        make_token(TokenKind.NEWLINE, '\n', undefined, 1, 13, 2, 0),
-        make_token(TokenKind.WORD, 'another_test', 'another_test', 2, 1, 2, 12),
-        make_token(TokenKind.COLON, ':', undefined, 2, 13, 2, 13),
-        make_token(TokenKind.TRUE, "true", true, 2, 15, 2, 18),
-        make_token(TokenKind.EOF, '', undefined, 2, 19, 2, 19)
+        makeToken(TokenKind.WORD, 'test', 'test', 1, 1, 1, 4),
+        makeToken(TokenKind.COLON, ':', undefined, 1, 6, 1, 6),
+        makeToken(TokenKind.FALSE, "false", false, 1, 8, 1, 12),
+        makeToken(TokenKind.NEWLINE, '\n', undefined, 1, 13, 2, 0),
+        makeToken(TokenKind.WORD, 'another_test', 'another_test', 2, 1, 2, 12),
+        makeToken(TokenKind.COLON, ':', undefined, 2, 13, 2, 13),
+        makeToken(TokenKind.TRUE, "true", true, 2, 15, 2, 18),
+        makeToken(TokenKind.EOF, '', undefined, 2, 19, 2, 19)
       ],
       'C17': [
-        make_token(TokenKind.WORD, 'test', 'test', 1, 1, 1, 4),
-        make_token(TokenKind.COLON, ':', undefined, 1, 6, 1, 6),
-        make_token(TokenKind.NONE, 'null', null, 1, 8, 1, 11),
-        make_token(TokenKind.EOF, '', undefined, 1, 12, 1, 12)
+        makeToken(TokenKind.WORD, 'test', 'test', 1, 1, 1, 4),
+        makeToken(TokenKind.COLON, ':', undefined, 1, 6, 1, 6),
+        makeToken(TokenKind.NONE, 'null', null, 1, 8, 1, 11),
+        makeToken(TokenKind.EOF, '', undefined, 1, 12, 1, 12)
       ],
       'C25': [
-        make_token(TokenKind.WORD, 'unicode', 'unicode', 1, 1, 1, 7),
-        make_token(TokenKind.ASSIGN, '=', undefined, 1, 9, 1, 9),
-        make_token(TokenKind.STRING, "'Grüß Gott'", 'Grüß Gott', 1, 11, 1, 21),
-        make_token(TokenKind.NEWLINE, '\n', undefined, 1, 22, 2, 0),
-        make_token(TokenKind.WORD, 'more_unicode', 'more_unicode', 2, 1, 2, 12),
-        make_token(TokenKind.COLON, ':', undefined, 2, 13, 2, 13),
-        make_token(TokenKind.STRING, "'Øresund'", 'Øresund', 2, 15, 2, 23),
-        make_token(TokenKind.EOF, '', undefined, 2, 24, 2, 24)
+        makeToken(TokenKind.WORD, 'unicode', 'unicode', 1, 1, 1, 7),
+        makeToken(TokenKind.ASSIGN, '=', undefined, 1, 9, 1, 9),
+        makeToken(TokenKind.STRING, "'Grüß Gott'", 'Grüß Gott', 1, 11, 1, 21),
+        makeToken(TokenKind.NEWLINE, '\n', undefined, 1, 22, 2, 0),
+        makeToken(TokenKind.WORD, 'more_unicode', 'more_unicode', 2, 1, 2, 12),
+        makeToken(TokenKind.COLON, ':', undefined, 2, 13, 2, 13),
+        makeToken(TokenKind.STRING, "'Øresund'", 'Øresund', 2, 15, 2, 23),
+        makeToken(TokenKind.EOF, '', undefined, 2, 24, 2, 24)
       ]
     }
-    load_data(dp, function (data) {
+    loadData(dp, function (data) {
       let keys = Object.keys(data);
 
       keys.sort();
       keys.forEach(function (key) {
         if (key in expected) {
-          let tokenizer = make_tokenizer(data[key]);
-          let tokens = collect_tokens(tokenizer);
+          let tokenizer = makeTokenizer(data[key]);
+          let tokens = collectTokens(tokenizer);
 
-          compare_arrays(tokens, expected[key]);
+          compareArrays(tokens, expected[key]);
         }
       });
     });
   });
 
   it('should handle locations', function () {
-    let dp = data_file_path('pos.forms.cfg.txt');
+    let dp = dataFilePath('pos.forms.cfg.txt');
     let f = fs.createReadStream(dp);
     let reader = readline.createInterface({
       input: f
@@ -411,14 +412,14 @@ describe('Tokenizer', function () {
       });
     });
     p.then(function (expected) {
-      let dp = data_file_path('forms.cfg');
-      let f = make_file_stream(dp);
+      let dp = dataFilePath('forms.cfg');
+      let f = makeFileStream(dp);
       let tokenizer = new Tokenizer(f);
       let i = 0;
 
       while (true) {
         let e = expected[i++];
-        let t = tokenizer.get_token();
+        let t = tokenizer.getToken();
 
         let sp = new Location(e[0], e[1]);
         let ep = new Location(e[2], e[3]);
@@ -426,8 +427,8 @@ describe('Tokenizer', function () {
         // if (i === 2501) {
         //   console.log('Failing entry');
         // }
-        compare_objects(t.start, sp, i);
-        compare_objects(t.end, ep, i);
+        compareObjects(t.start, sp, i);
+        compareObjects(t.end, ep, i);
         if (t.kind == TokenKind.EOF) {
           break;
         }
@@ -460,13 +461,13 @@ describe('Tokenizer', function () {
     ];
 
     bad_numbers.forEach(function (c) {
-      let tokenizer = make_tokenizer(c[0]);
+      let tokenizer = makeTokenizer(c[0]);
       try {
-        let t = tokenizer.get_token();
+        let t = tokenizer.getToken();
       } catch (e) {
         expect(e.message).to.have.string(c[1]);
         let pos = new Location(c[2], c[3]);
-        compare_locs(e.location, pos);
+        compareLocs(e.location, pos);
       }
     });
 
@@ -480,13 +481,13 @@ describe('Tokenizer', function () {
     ];
 
     bad_strings.forEach(function (c) {
-      let tokenizer = make_tokenizer(c[0]);
+      let tokenizer = makeTokenizer(c[0]);
       try {
-        let t = tokenizer.get_token();
+        let t = tokenizer.getToken();
       } catch (e) {
         expect(e.message).to.have.string(c[1]);
         let pos = new Location(c[2], c[3]);
-        compare_locs(e.location, pos);
+        compareLocs(e.location, pos);
       }
     });
   });
@@ -513,8 +514,8 @@ describe('Tokenizer', function () {
     ];
 
     cases.forEach(function(c) {
-      let tokenizer = make_tokenizer(c[0]);
-      let t = tokenizer.get_token();
+      let tokenizer = makeTokenizer(c[0]);
+      let t = tokenizer.getToken();
 
       expect(t.value).to.equal(c[1], `failed for ${c[0]}`);
     });
@@ -536,10 +537,10 @@ describe('Tokenizer', function () {
     ];
 
     bad_cases.forEach(function(c) {
-      let tokenizer = make_tokenizer(c);
+      let tokenizer = makeTokenizer(c);
 
       try {
-        let t = tokenizer.get_token();
+        let t = tokenizer.getToken();
       } catch (e) {
         expect(e.message).to.have.string('Invalid escape sequence', `failed for ${c}`);
       }
@@ -547,6 +548,10 @@ describe('Tokenizer', function () {
   });
 });
 
+function make_parser(s) {
+  return new Parser(makeStream(s));
+}
+
 describe('Parser', function() {
-  
+
 });

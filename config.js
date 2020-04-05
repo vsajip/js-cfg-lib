@@ -7,7 +7,7 @@ const util = require('util');
 
 const Complex = require('complex.js');
 
-function make_stream(s) {
+function makeStream(s) {
   let result = new stream.Readable({
     encoding: 'utf-8'
   });
@@ -20,11 +20,11 @@ function make_stream(s) {
   return result;
 }
 
-function make_file_stream(p) {
+function makeFileStream(p) {
   let s = fs.readFileSync(p, {
     encoding: 'utf-8'
   });
-  return make_stream(s);
+  return makeStream(s);
 }
 
 class Location {
@@ -286,10 +286,10 @@ class Tokenizer {
     this.pushed_back = [];
     this.char_location = new Location();
     this.location = new Location();
-    this._at_end = false;
+    this._atEnd = false;
   }
 
-  get_char() {
+  getChar() {
     let result;
 
     if (this.pushed_back.length > 0) {
@@ -304,7 +304,7 @@ class Tokenizer {
       // }
       result = this.stream.read(1);
       if (result === null) {
-        this._at_end = true;
+        this._atEnd = true;
       }
       if (result == '\n') {
         this.location.next_line();
@@ -315,11 +315,11 @@ class Tokenizer {
     return result;
   }
 
-  at_end() {
-    return this._at_end;
+  atEnd() {
+    return this._atEnd;
   }
 
-  push_back(c) {
+  pushBack(c) {
     if ((c == '\n') || !is_whitespace(c)) {
       let pb = new PushBackInfo(c, this.char_location.copy(), this.location.copy());
 
@@ -327,7 +327,7 @@ class Tokenizer {
     }
   }
 
-  get_number(text, start_loc, end_loc) {
+  getNumber(text, start_loc, end_loc) {
     let result = INTEGER;
     let value;
     let in_exponent = false;
@@ -337,7 +337,7 @@ class Tokenizer {
     let c;
 
     while (true) {
-      c = this.get_char();
+      c = this.getChar();
       if (c === null) {
         break;
       }
@@ -402,7 +402,7 @@ class Tokenizer {
     } else {
       // not allowed to have a letter or digit which wasn't accepted
       if ((c !== '.') && !is_letter_or_digit(c)) {
-        this.push_back(c);
+        this.pushBack(c);
       } else if (c !== null) {
         let msg = `Invalid character in number: ${c}`;
         let e = new TokenizerException(msg);
@@ -434,7 +434,7 @@ class Tokenizer {
     return [result, text, value];
   }
 
-  get_token() {
+  getToken() {
     let kind = EOF;
     let text = '';
     let value;
@@ -442,7 +442,7 @@ class Tokenizer {
     let end_loc = new Location();
 
     while (true) {
-      let c = this.get_char();
+      let c = this.getChar();
 
       start_loc.update(this.char_location);
       end_loc.update(this.char_location);
@@ -453,7 +453,7 @@ class Tokenizer {
       if (c === '#') {
         text += c;
         while (true) {
-          c = this.get_char();
+          c = this.getChar();
           if (c === null) {
             break;
           }
@@ -464,9 +464,9 @@ class Tokenizer {
             text += c;
             continue;
           }
-          c = this.get_char();
+          c = this.getChar();
           if (c != '\n') {
-            this.push_back(c);
+            this.pushBack(c);
             break;
           }
         }
@@ -482,15 +482,15 @@ class Tokenizer {
         kind = NEWLINE;
         break;
       } else if (c === '\r') {
-        c = this.get_char();
+        c = this.getChar();
         if (c != '\n') {
-          this.push_back(c);
+          this.pushBack(c);
         }
         kind = NEWLINE;
         this.location.next_line();
         break;
       } else if (c == '\\') {
-        c = this.get_char();
+        c = this.getChar();
         if (c !== '\n') {
           let e = new TokenizerException("Unexpected character: \\");
 
@@ -505,13 +505,13 @@ class Tokenizer {
         kind = WORD;
         text += c;
         end_loc.update(this.char_location);
-        c = this.get_char();
+        c = this.getChar();
         while ((c !== null) && (is_letter_or_digit(c) || (c == '_'))) {
           text += c;
           end_loc.update(this.char_location);
-          c = this.get_char();
+          c = this.getChar();
         }
-        this.push_back(c);
+        this.pushBack(c);
         value = text;
         if (text in KEYWORDS) {
           kind = KEYWORDS[text];
@@ -525,7 +525,7 @@ class Tokenizer {
         text += c;
         end_loc.update(this.char_location);
         while (true) {
-          c = this.get_char();
+          c = this.getChar();
           if (c === null) {
             break;
           }
@@ -559,20 +559,20 @@ class Tokenizer {
 
         text += c;
 
-        let c1 = this.get_char();
+        let c1 = this.getChar();
         let c1_loc = this.char_location.copy();
 
         if (c1 !== quote) {
-          this.push_back(c1);
+          this.pushBack(c1);
         } else {
-          let c2 = this.get_char();
+          let c2 = this.getChar();
 
           if (c2 !== quote) {
-            this.push_back(c2);
+            this.pushBack(c2);
             if (c2 === null) {
               this.char_location.update(c1_loc);
             }
-            this.push_back(c1);
+            this.pushBack(c1);
           } else {
             multi_line = true;
             text += quote;
@@ -583,7 +583,7 @@ class Tokenizer {
         let quoter = text;
 
         while (true) {
-          c = this.get_char();
+          c = this.getChar();
           if (c === null) {
             break;
           }
@@ -617,18 +617,18 @@ class Tokenizer {
       } else if (is_digit(c)) {
         text += c;
         end_loc.update(this.char_location);
-        let gn = this.get_number(text, start_loc, end_loc);
+        let gn = this.getNumber(text, start_loc, end_loc);
         kind = gn[0];
         text = gn[1];
         value = gn[2];
         break;
       } else if (c === '=') {
-        let nc = this.get_char();
+        let nc = this.getChar();
 
         if (nc !== '=') {
           kind = ASSIGN;
           text += c;
-          this.push_back(nc);
+          this.pushBack(nc);
         } else {
           kind = EQ;
           text += c + c;
@@ -640,31 +640,31 @@ class Tokenizer {
         text += c;
         end_loc.update(this.char_location);
         if (c === '.') {
-          c = this.get_char();
+          c = this.getChar();
           if (!is_digit(c)) {
-            this.push_back(c);
+            this.pushBack(c);
           } else {
             text += c;
             end_loc.update(this.char_location);
-            let gn = this.get_number(text, start_loc, end_loc);
+            let gn = this.getNumber(text, start_loc, end_loc);
             kind = gn[0];
             text = gn[1];
             value = gn[2];
           }
         } else if (c === '-') {
-          c = this.get_char();
+          c = this.getChar();
           if (!is_digit(c) && (c !== '.')) {
-            this.push_back(c);
+            this.pushBack(c);
           } else {
             text += c;
             end_loc.update(this.char_location);
-            let gn = this.get_number(text, start_loc, end_loc);
+            let gn = this.getNumber(text, start_loc, end_loc);
             kind = gn[0];
             text = gn[1];
             value = gn[2];
           }
         } else if (c === '<') {
-          c = this.get_char();
+          c = this.getChar();
           if (c === '=') {
             kind = LE;
             text += c;
@@ -678,10 +678,10 @@ class Tokenizer {
             text += c;
             end_loc.update(this.char_location);
           } else {
-            this.push_back(c);
+            this.pushBack(c);
           }
         } else if (c === '>') {
-          c = this.get_char();
+          c = this.getChar();
           if (c === '=') {
             kind = GE;
             text += c;
@@ -691,40 +691,40 @@ class Tokenizer {
             text += c;
             end_loc.update(this.char_location);
           } else {
-            this.push_back(c);
+            this.pushBack(c);
           }
         } else if (c === '!') {
-          c = this.get_char();
+          c = this.getChar();
           if (c === '=') {
             kind = NEQ;
             text += c;
             end_loc.update(this.char_location);
           } else {
-            this.push_back(c);
+            this.pushBack(c);
           }
         } else if (c === '/') {
-          c = this.get_char();
+          c = this.getChar();
           if (c !== '/') {
-            this.push_back(c);
+            this.pushBack(c);
           } else {
             kind = SLASHSLASH;
             text += c;
             end_loc.update(this.char_location);
           }
         } else if (c === '*') {
-          c = this.get_char();
+          c = this.getChar();
           if (c != '*') {
-            this.push_back(c);
+            this.pushBack(c);
           } else {
             kind = POWER;
             text += c;
             end_loc.update(this.char_location);
           }
         } else if ((c === '&') || (c === '|')) {
-          let c2 = this.get_char();
+          let c2 = this.getChar();
 
           if (c2 !== c) {
-            this.push_back(c2);
+            this.pushBack(c2);
           } else {
             kind = (c2 === '&') ? AND : OR;
             text += c;
@@ -812,15 +812,15 @@ class MappingNode extends ASTNode {
 class Parser {
   constructor(stream) {
     this.tokenizer = new Tokenizer(stream);
-    this.next = tokenizer.get_token();
+    this.next = tokenizer.getToken();
   }
 
-  at_end() {
+  atEnd() {
     return this.next.kind == EOF;
   }
 
   advance() {
-    this.next = this.tokenizer.get_token();
+    this.next = this.tokenizer.getToken();
     return this.next.kind;
   }
 
@@ -837,7 +837,7 @@ class Parser {
     return result;
   }
 
-  consume_newlines() {
+  consumeNewlines() {
     var result = this.next.kind;
 
     while (result == NEWLINE) {
@@ -991,8 +991,8 @@ TokenKind.BITOR = BITOR;
 TokenKind.BITXOR = BITXOR;
 
 module.exports = {
-  make_stream: make_stream,
-  make_file_stream: make_file_stream,
+  makeStream: makeStream,
+  makeFileStream: makeFileStream,
   Location: Location,
   TokenKind: TokenKind,
   Token: Token,
