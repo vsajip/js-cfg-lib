@@ -110,6 +110,8 @@ const OR = 'or';
 const BITAND = '&';
 const BITOR = '|';
 const BITXOR = '^';
+const ISNOT = 'is not';
+const NOTIN = 'not in';
 
 class ASTNode {
   constructor(kind) {
@@ -211,10 +213,10 @@ function is_letter_or_digit(c) {
   return /[\p{L}\p{Nd}]/u.test(c);
 }
 
-function parse_escapes(inp) {
+function parseEscapes(inp) {
   let result;
   var s = inp;
-  var i = s.indexOf('\\');
+  let i = s.indexOf('\\');
 
   if (i < 0) {
     result = s;
@@ -543,7 +545,7 @@ class Tokenizer {
           throw e;
         }
         try {
-          value = parse_escapes(text.substring(1, text.length - 1));
+          value = parseEscapes(text.substring(1, text.length - 1));
         } catch (e) {
           e.location = start_loc;
           throw e;
@@ -608,7 +610,7 @@ class Tokenizer {
         n = quoter.length;
         let s = text;
         try {
-          value = parse_escapes(s.substring(n, text.length - n));
+          value = parseEscapes(s.substring(n, text.length - n));
         } catch (e) {
           e.location = start_loc;
           throw e;
@@ -757,7 +759,13 @@ const EXPRESSION_STARTERS = new Set();
 const VALUE_STARTERS = new Set();
 [
   WORD, INTEGER, FLOAT, COMPLEX, STRING, BACKTICK, NONE, TRUE, FALSE
-].forEach(tk => EXPRESSION_STARTERS.add(tk));
+].forEach(tk => VALUE_STARTERS.add(tk));
+
+const COMPARISON_OPERATORS = new Set();
+
+[
+  LT, LE, GT, GE, EQ, NEQ, ALT_NEQ, IS, IN, NOT
+].forEach(tk => COMPARISON_OPERATORS.add(tk));
 
 class UnaryNode extends ASTNode {
   constructor(kind, operand) {
@@ -812,7 +820,7 @@ class MappingNode extends ASTNode {
 class Parser {
   constructor(stream) {
     this.tokenizer = new Tokenizer(stream);
-    this.next = tokenizer.getToken();
+    this.next = this.tokenizer.getToken();
   }
 
   atEnd() {
@@ -827,7 +835,7 @@ class Parser {
   expect(kind) {
     let n = this.next;
     if (n.kind !== kind) {
-      let e = ParserException(`expected ${kind} but got ${n.kind}`);
+      let e = new ParserException(`expected ${kind} but got ${n.kind}`);
 
       e.location = n.start;
       throw e;
@@ -838,7 +846,7 @@ class Parser {
   }
 
   consumeNewlines() {
-    var result = this.next.kind;
+    let result = this.next.kind;
 
     while (result == NEWLINE) {
       result = this.advance();
@@ -912,7 +920,7 @@ class Parser {
         let spos = this.next.start;
         result = new UnaryNode(DOLLAR, this.primary());
         result.start = spos;
-        this.expect(LCURLY);
+        this.expect(RCURLY);
         break;
       case WORD:
       case INTEGER:
@@ -929,6 +937,7 @@ class Parser {
         this.advance();
         result = this.expr();
         this.expect(RPAREN);
+        break;
       default:
         let e = new ParserException(`Unexpected: ${kind}`);
 
@@ -938,6 +947,348 @@ class Parser {
     return result;
   }
 
+  trailer() {
+    let op = this.next.kind;
+    let result;
+
+    function invalidIndex(n, pos) {
+      let msg = `Invalid index at ${pos}: expected 1 expression, found ${n}`;
+
+      throw new ParserException(msg);
+    }
+
+    if (op !== LBRACK) {
+      this.expect(DOT);
+      result = this.expect(WORD);
+    } else {
+      let kind = this.advance();
+      let isSlice = false;
+      let startIndex = null;
+      let stopIndex = null;
+      let step = null;
+
+      function getSliceElement(parser) {
+        const lb = parser.listBody();
+        const size = lb.elements.length;
+
+        if (size !== 1) {
+          invalidIndex(size, lb.start);
+        }
+        return lb.elements[0];
+      }
+
+      function tryGetStep(parser) {
+        kind = parser.advance();
+        if (kind !== RBRACK) {
+          step = getSliceElement(parser);
+        }
+      }
+
+      if (kind === COLON) {
+        // it's a slice like [:xyz:abc]
+        isSlice = true;
+      } else {
+        const elem = getSliceElement(this);
+
+        kind = this.next.kind;
+        if (kind !== COLON) {
+          result = elem;
+        } else {
+          startIndex = elem;
+          isSlice = true;
+        }
+      }
+      if (isSlice) {
+        op = COLON;
+        // at this point startIndex is either null (if foo[:xyz]) or a
+        // value representing the start. We are pointing at the COLON
+        // after the start value
+        kind = this.advance();
+        if (kind === COLON) { // no stop, but there might be a step
+          tryGetStep(this);
+        } else if (kind !== RBRACK) {
+          stopIndex = getSliceElement(this);
+          kind = this.next.kind;
+          if (kind === COLON) {
+            tryGetStep(this);
+          }
+        }
+        result = new SliceNode(startIndex, stopIndex, step);
+      }
+      this.expect(RBRACK);
+    }
+    return [op, result];
+  }
+
+  primary() {
+    let result = this.atom();
+    let kind = this.next.kind;
+
+    while ((kind === DOT) || (kind === LBRACK)) {
+      const p = this.trailer();
+      result = new BinaryNode(p[0], result, p[1]);
+      kind = this.next.kind;
+    }
+    return result;
+  }
+
+  objectKey() {
+    let result;
+
+    if (this.next.kind === STRING) {
+      result = this.strings();
+    } else {
+      result = this.next;
+      this.advance();
+    }
+    return result;
+  }
+
+  mappingBody() {
+    const result = [];
+    let kind = this.consumeNewlines();
+
+    if ((kind !== RCURLY) && (kind !== EOF)) {
+      if ((kind !== WORD) && (kind !== STRING)) {
+        const e = new ParserException(`Unexpected type for key: ${kind}`);
+
+        e.location = this.next.start;
+        throw e;
+      }
+      while ((kind == WORD) || (kind == STRING)) {
+        const key = this.objectKey();
+        kind = this.next.kind;
+        if ((kind !== COLON) && (kind !== ASSIGN)) {
+          const e = new ParserException(`Expected key-value separator, found: ${kind}`);
+
+          e.location = this.next.start;
+          throw e;
+        }
+        this.advance();
+        this.consumeNewlines();
+        result.push([key, this.expr()]);
+        kind = this.next.kind;
+        if ((kind === NEWLINE) || (kind === COMMA)) {
+          this.advance();
+          kind = this.consumeNewlines();
+        }
+      }
+    }
+    return new MappingNode(result);
+  }
+
+  mapping() {
+    this.expect(LCURLY);
+    const result = this.mappingBody();
+    this.expect(RCURLY);
+    return result;
+  }
+
+  listBody() {
+    const result = [];
+    let kind = this.consumeNewlines();
+
+    while (EXPRESSION_STARTERS.has(kind)) {
+      result.push(this.expr());
+      kind = this.next.kind;
+      if ((kind !== NEWLINE) && (kind !== COMMA)) {
+        break;
+      }
+      this.advance();
+      kind = this.consumeNewlines();
+    }
+    return new ListNode(result);
+  }
+
+  list() {
+    this.expect(LBRACK);
+    const result = this.listBody();
+    this.expect(RBRACK);
+    return result;
+  }
+
+  container() {
+    const kind = this.consumeNewlines();
+    let result;
+
+    if (kind === LCURLY) {
+      result = this.mapping();
+    } else if (kind === LBRACK) {
+      result = this.list();
+    } else if (kind === WORD || kind === STRING || kind === EOF) {
+      result = this.mappingBody();
+    } else {
+      const e = new ParserException(`Unexpected type for container: ${kind}`);
+
+      e.location = this.next.start;
+      throw e;
+    }
+    this.consumeNewlines();
+    return result;
+  }
+
+  power() {
+    let result = this.primary();
+
+    while (this.next.kind === POWER) {
+      this.advance();
+      result = new BinaryNode(POWER, result, this.unaryExpr());
+    }
+    return result;
+  }
+
+  unaryExpr() {
+    let result;
+    const kind = this.next.kind;
+    const spos = this.next.start;
+
+    if ((kind !== PLUS) && (kind !== MINUS) && (kind !== TILDE) && (kind !== AT)) {
+      result = this.power();
+    } else {
+      this.advance();
+      return new UnaryNode(kind, this.unaryExpr());
+    }
+    result.start = spos;
+    return result;
+  }
+
+  mulExpr() {
+    let result = this.unaryExpr();
+    let kind = this.next.kind;
+
+    while ((kind === STAR) || (kind === SLASH) ||
+      (kind === SLASHSLASH) || (kind === MODULO)) {
+      this.advance();
+      result = new BinaryNode(kind, result, this.unaryExpr());
+      kind = this.next.kind;
+    }
+    return result;
+  }
+
+  addExpr() {
+    let result = this.mulExpr();
+    let kind = this.next.kind;
+
+    while ((kind === PLUS) || (kind === MINUS)) {
+      this.advance();
+      result = new BinaryNode(kind, result, this.mulExpr());
+      kind = this.next.kind;
+    }
+    return result;
+  }
+
+  shiftExpr() {
+    let result = this.addExpr();
+    let kind = this.next.kind;
+
+    while ((kind === LSHIFT) || (kind === RSHIFT)) {
+      this.advance();
+      result = new BinaryNode(kind, result, this.addExpr());
+      kind = this.next.kind;
+    }
+    return result;
+  }
+
+  bitandExpr() {
+    let result = this.shiftExpr();
+
+    while (this.next.kind === BITAND) {
+      this.advance();
+      result = new BinaryNode(BITAND, result, this.shiftExpr());
+    }
+    return result;
+  }
+
+  bitxorExpr() {
+    let result = this.bitandExpr();
+
+    while (this.next.kind === BITXOR) {
+      this.advance();
+      result = new BinaryNode(BITXOR, result, this.bitandExpr());
+    }
+    return result;
+  }
+
+  bitorExpr() {
+    let result = this.bitxorExpr();
+
+    while (this.next.kind === BITOR) {
+      this.advance();
+      result = new BinaryNode(BITOR, result, this.bitxorExpr());
+    }
+    return result;
+  }
+
+  compOp() {
+    let result = this.next.kind;
+    let shouldAdvance = false;
+    const nk = this.advance();
+
+    if ((result === IS) && (nk === NOT)) {
+      result = ISNOT;
+      shouldAdvance = true;
+    } else if ((result === NOT) && (nk === IN)) {
+      result = NOTIN;
+      shouldAdvance = true;
+    }
+    if (shouldAdvance) {
+      this.advance();
+    }
+    return result;
+  }
+
+  comparison() {
+    let result = this.bitorExpr();
+
+    while (COMPARISON_OPERATORS.has(this.next.kind)) {
+      const op = this.compOp();
+
+      result = new BinaryNode(op, result, this.bitorExpr());
+    }
+    return result
+  }
+
+  notExpr() {
+    if (this.next.kind !== NOT) {
+      return this.comparison();
+    }
+    this.advance();
+    return new UnaryNode(NOT, this.notExpr());
+  }
+
+  andExpr() {
+    let result = this.notExpr();
+
+    while (this.next.kind === AND) {
+      this.advance();
+      result = new BinaryNode(AND, result, this.notExpr());
+    }
+    return result;
+  }
+
+  expr() {
+    let result = this.andExpr();
+
+    while (this.next.kind === OR) {
+      this.advance();
+      result = new BinaryNode(OR, result, this.andExpr());
+    }
+    return result;
+  }
+}
+
+function makeParser(s) {
+  return new Parser(makeStream(s));
+}
+
+
+function parse(s, rule) {
+  const p = makeParser(s);
+
+  if (typeof p[rule] !== 'function') {
+    throw new Error(`unknown rule: ${rule}`);
+  }
+  return p[rule]();
 }
 
 var TokenKind = new Object();
@@ -989,13 +1340,23 @@ TokenKind.OR = OR;
 TokenKind.BITAND = BITAND;
 TokenKind.BITOR = BITOR;
 TokenKind.BITXOR = BITXOR;
+TokenKind.ISNOT = ISNOT;
+TokenKind.NOTIN = NOTIN;
 
 module.exports = {
   makeStream: makeStream,
   makeFileStream: makeFileStream,
+  makeParser: makeParser,
+  parse: parse,
   Location: Location,
   TokenKind: TokenKind,
   Token: Token,
   Tokenizer: Tokenizer,
-  Parser: Parser
+  Parser: Parser,
+  ASTNode: ASTNode,
+  UnaryNode: UnaryNode,
+  BinaryNode: BinaryNode,
+  SliceNode: SliceNode,
+  ListNode: ListNode,
+  MappingNode: MappingNode
 };
