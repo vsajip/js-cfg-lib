@@ -282,6 +282,8 @@ class TokenizerException extends RecognizerException {}
 
 class ParserException extends RecognizerException {}
 
+class ConfigException extends RecognizerException {}
+
 class Tokenizer {
   constructor(stream) {
     this.stream = stream;
@@ -1291,6 +1293,75 @@ function parse(s, rule) {
   return p[rule]();
 }
 
+// Config API
+
+function unwrap(o) {
+  if (o instanceof DictWrapper) {
+    return o.asDict();
+  }
+  if (o instanceof ListWrapper) {
+    return o.asList();
+  }
+  return o;
+}
+
+class DictWrapper {
+  constructor(config, data) {
+    this.config = config;
+    this.data = data;
+  }
+}
+
+class ListWrapper {
+  constructor(config, data) {
+    this.config = config;
+    this.data = data;
+  }
+}
+
+const defaults = {
+  noDuplicates: true,
+  strictConversions: true
+};
+
+class Config {
+  constructor(pathOrReader, options) {
+    if (typeof options !== 'object') {
+      this._options = defaults;
+    } else {
+      this._options = {...defaults, ...options};
+    }
+    if (typeof pathOrReader === 'string') {
+      this.loadFile(pathOrReader);
+    } else if (pathOrReader instanceof stream.Readable) {
+      this.load(pathOrReader);
+    } else if (pathOrReader !== undefined) {
+      throw new Error(`Expecting pathname or stream, got ${pathOrReader}`);
+    }
+  }
+
+  setPath(p) {
+    this.path = p;
+    this.rootDir = path.dirname(p);
+  }
+
+  loadFile(path) {
+    this.load(makeFileStream(path));
+    this.setPath(path);
+  }
+
+  load(stream) {
+    let p = new Parser(stream);
+    let node = p.container();
+
+    if (!(node instanceof MappingNode)) {
+      throw new ConfigException('Root configuration must be a mapping');
+    }
+  }
+}
+
+// Exports
+
 var TokenKind = new Object();
 TokenKind.EOF = EOF;
 TokenKind.WORD = WORD;
@@ -1358,5 +1429,9 @@ module.exports = {
   BinaryNode: BinaryNode,
   SliceNode: SliceNode,
   ListNode: ListNode,
-  MappingNode: MappingNode
+  MappingNode: MappingNode,
+  Config: Config,
+  RecognizerException: RecognizerException,
+  ParserException: ParserException,
+  ConfigException: ConfigException
 };

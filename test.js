@@ -26,6 +26,7 @@ const {
   ListNode,
   MappingNode,
   ASTNode,
+  Config,
   makeStream,
   makeFileStream,
   makeParser,
@@ -854,5 +855,24 @@ describe('Parser', function () {
         assert.include(e.message, c[1]);
       }
     });
+  });
+});
+
+describe('Config', function() {
+  it('should handle initialization', function() {
+    let cfg = new Config();
+
+    cfg = new Config(dataFilePath('forms.cfg'));
+    cfg = new Config(makeStream('{}'));
+    try {
+      cfg = new Config(makeStream('[]'));
+    } catch (e) {
+      assert.include(e.message, 'Root configuration must be a mapping');
+    }
+    try {
+      cfg = new Config(4);
+    } catch (e) {
+      assert.include(e.message, 'Expecting pathname or stream, got 4');
+    }
   });
 });
