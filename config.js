@@ -5,6 +5,7 @@ var path = require('path');
 const stream = require('stream');
 const util = require('util');
 
+const _ = require('lodash');
 const Complex = require('complex.js');
 
 function makeStream(s) {
@@ -25,6 +26,15 @@ function makeFileStream(p) {
     encoding: 'utf-8'
   });
   return makeStream(s);
+}
+
+function isReadable(p) {
+  try {
+    fs.accessSync(p, fs.constants.R_OK);
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 class Location {
@@ -276,6 +286,12 @@ function parseEscapes(inp) {
   return result;
 }
 
+var IDENTIFIER_PATTERN = /^\p{L}[\p{L}\p{Nd}]*$/u;
+
+function isIdentifier(s) {
+  return IDENTIFIER_PATTERN.test(s);
+}
+
 class RecognizerException extends Error {}
 
 class TokenizerException extends RecognizerException {}
@@ -283,6 +299,12 @@ class TokenizerException extends RecognizerException {}
 class ParserException extends RecognizerException {}
 
 class ConfigException extends RecognizerException {}
+
+class InvalidPathException extends ConfigException {}
+
+class BadIndexException extends ConfigException {}
+
+class CircularReferenceException extends ConfigException {}
 
 class Tokenizer {
   constructor(stream) {
@@ -769,6 +791,11 @@ const COMPARISON_OPERATORS = new Set();
   LT, LE, GT, GE, EQ, NEQ, ALT_NEQ, IS, IN, NOT
 ].forEach(tk => COMPARISON_OPERATORS.add(tk));
 
+const SCALAR_TOKENS = new Set();
+[
+  STRING, INTEGER, FLOAT, COMPLEX, TRUE, FALSE, NONE
+].forEach(tk => SCALAR_TOKENS.add(tk));
+
 class UnaryNode extends ASTNode {
   constructor(kind, operand) {
     super(kind);
@@ -1087,8 +1114,9 @@ class Parser {
   }
 
   listBody() {
-    const result = [];
+    let result = [];
     let kind = this.consumeNewlines();
+    let spos = this.next.start;
 
     while (EXPRESSION_STARTERS.has(kind)) {
       result.push(this.expr());
@@ -1099,7 +1127,9 @@ class Parser {
       this.advance();
       kind = this.consumeNewlines();
     }
-    return new ListNode(result);
+    result = new ListNode(result);
+    result.start = spos;
+    return result;
   }
 
   list() {
@@ -1295,6 +1325,101 @@ function parse(s, rule) {
 
 // Config API
 
+function parsePath(s) {
+  const parser = makeParser(s);
+
+  if (parser.next.kind !== WORD) {
+    throw new InvalidPathException(`Invalid path: ${s}`);
+  }
+  try {
+    let result = parser.primary();
+    if (!parser.atEnd()) {
+      throw new InvalidPathException(`Invalid path: ${s}`);
+    }
+    return result;
+  } catch (e) {
+    let ipe = new InvalidPathException(`Invalid path: ${s}`);
+
+    ipe.cause = e;
+    throw ipe;
+  }
+}
+
+function* pathIterator(start) {
+  function* visit(node) {
+    if (node instanceof Token) {
+      yield node;
+    } else if (node instanceof UnaryNode) {
+      yield* visit(node.operand);
+    } else if (node instanceof BinaryNode) {
+      yield* visit(node.left);
+      switch (node.kind) {
+        case DOT:
+        case LBRACK:
+          yield [node.kind, node.right.value];
+          break;
+        case COLON:
+          yield [node.kind, node.right];
+          break;
+        default:
+          throw new Error(`unexpected node ${node}`);
+      }
+    }
+  }
+  for (const it of visit(start)) {
+    yield it;
+  }
+}
+
+function toSource(node) {
+  if (node instanceof Token) {
+    return node.value.toString();
+  }
+  if (!(node instanceof ASTNode)) {
+    return node.toString();
+  }
+  let pi = pathIterator(node);
+  let first = pi.next();
+  let parts = [];
+
+  if (!first.done) {
+    parts.push(first.value.value);
+  }
+  for (const item of pi) {
+    let [op, operand] = item;
+
+    switch (op) {
+      case DOT:
+        parts.push('.');
+        parts.push(operand);
+        break;
+      case LBRACK:
+        parts.push('[');
+        parts.push(toSource(operand));
+        parts.push(']');
+        break;
+      case COLON:
+        parts.push('[');
+        if (operand.startIndex !== null) {
+          parts.push(toSource(operand.startIndex));
+        }
+        parts.push(':');
+        if (operand.stopIndex !== null) {
+          parts.push(toSource(operand.stopIndex));
+        }
+        if (operand.step !== null) {
+          parts.push(':');
+          parts.push(toSource(operand.step));
+        }
+        parts.push(']');
+        break;
+      default:
+        throw new ConfigException(`unable to compute source for ${node}`);
+    }
+  }
+  return parts.join('');
+}
+
 function unwrap(o) {
   if (o instanceof DictWrapper) {
     return o.asDict();
@@ -1310,6 +1435,33 @@ class DictWrapper {
     this.config = config;
     this.data = data;
   }
+  baseGet(k) {
+    if (!(k in this.data)) {
+      throw new ConfigException(`Not found in configuration: ${k}`);
+    }
+    return this.data[k];
+  }
+  get(k) {
+    return this.config.evaluated(this.baseGet(k));
+  }
+  asDict() {
+    const result = {};
+    const cfg = this.config;
+
+    for (let [k, v] of Object.entries(this.data)) {
+      let rv = cfg.evaluated(v);
+
+      if (rv instanceof DictWrapper) {
+        rv = rv.asDict();
+      } else if (rv instanceof ListWrapper) {
+        rv = rv.asList();
+      } else if (rv instanceof Config) {
+        rv = rv.asDict();
+      }
+      result[k] = rv;
+    }
+    return result;
+  }
 }
 
 class ListWrapper {
@@ -1317,20 +1469,72 @@ class ListWrapper {
     this.config = config;
     this.data = data;
   }
+
+  baseGet(i) {
+    if ((i < 0) || (i >= this.data.length)) {
+      throw new ConfigException(`Index out of range: ${i}`);
+    }
+    return this.data[i];
+  }
+  get(i) {
+    return this.config.evaluated(this.baseGet(i));
+  }
+  asList() {
+    const result = [];
+    const cfg = this.config;
+
+    this.data.forEach(function (v) {
+      let rv = cfg.evaluated(v);
+
+      if (rv instanceof DictWrapper) {
+        rv = rv.asDict();
+      } else if (rv instanceof ListWrapper) {
+        rv = rv.asList();
+      } else if (rv instanceof Config) {
+        rv = rv.asDict();
+      }
+      result.push(rv);
+    });
+    return result;
+  }
 }
 
 const defaults = {
   noDuplicates: true,
-  strictConversions: true
+  strictConversions: true,
+  includePath: [],
+  context: {},
+  cached: false
 };
+
+const MISSING = new Object();
+const PROPNAMES = 'noDuplicates strictConversions cached'.split(' ');
 
 class Config {
   constructor(pathOrReader, options) {
+    let d = _.cloneDeep(defaults);
+
     if (typeof options !== 'object') {
-      this._options = defaults;
+      options = d;
     } else {
-      this._options = {...defaults, ...options};
+      options = {
+        ...d,
+        ...options
+      };
     }
+    let self = this;
+    PROPNAMES.forEach(function (n) {
+      if (n in options) {
+        self[n] = options[n];
+      }
+    });
+    this.data = null;
+    this.path = null;
+    this.rootDir = null;
+    this.refsSeen = {};
+
+    this.cache = this.cached ? null : {};
+
     if (typeof pathOrReader === 'string') {
       this.loadFile(pathOrReader);
     } else if (pathOrReader instanceof stream.Readable) {
@@ -1357,6 +1561,198 @@ class Config {
     if (!(node instanceof MappingNode)) {
       throw new ConfigException('Root configuration must be a mapping');
     }
+    this.data = this.wrapMapping(node);
+  }
+
+  wrapMapping(mn) {
+    let result = {};
+    let noDupes = this.noDuplicates;
+    let seen = noDupes ? {} : undefined;
+
+    mn.elements.forEach(function (e) {
+      const [t, v] = e;
+      const k = t.value;
+
+      if (!noDupes) {
+        result[k] = v;
+      } else {
+        if (k in seen) {
+          let msg = `Duplicate key ${k} seen at ${t.start} (previously at ${seen[k]})`;
+
+          throw new ConfigException(msg);
+        }
+        seen[k] = t.start;
+        result[k] = v;
+      }
+    });
+    return new DictWrapper(this, result);
+  }
+
+  wrapList(ln) {
+    return new ListWrapper(this, ln.elements);
+  }
+
+  evalAt(node) {
+    let fn = this.evaluate(node.operand);
+
+    if (typeof fn !== 'string') {
+      const ce = new ConfigException(`@ operand must be a string, but is ${fn}`);
+
+      ce.location = node.start;
+      throw ce;
+    }
+    // The if below shouldn't be needed as you'd get an @ in an already loaded
+    // configuration.
+    // if (this.data === null) {
+    //   throw new ConfigException('No configuration loaded');
+    // }
+    if (!this.rootDir) {
+      throw new ConfigException('No root directory found');
+    }
+    let checkPath = true;
+
+    if (!path.isAbsolute(fn)) {
+      // look in rootDir, then includePath
+      let p = path.join(this.rootDir, fn);
+
+      if (isReadable(p)) {
+        fn = p;
+        checkPath = false;
+      } else {
+        let found = false;
+
+        for (const d of this.includePath) {
+          p = path.join(d, fn);
+          if (isReadable(p)) {
+            fn = p;
+            checkPath = false;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          let ce = new ConfigException(`unable to locate ${fn}`);
+
+          ce.location = node.operand.start;
+          throw ce;
+        }
+      }
+    }
+    // fn contains the path of an existing file - try and load it
+    if (checkPath && !isReadable(fn)) {
+      let ce = new ConfigException(`unable to read ${fn}`);
+
+      ce.location = node.operand.start;
+      throw ce;
+    }
+    let stream = makeFileStream(fn);
+    let parser = new Parser(stream);
+    let cnode = parser.container();
+    let result;
+
+    if (!(cnode instanceof MappingNode)) {
+      result = cnode;
+    } else {
+      let cfg = new Config();
+
+      cfg.noDuplicates = this.noDuplicates;
+      cfg.strictConversions = this.strictConversions;
+      cfg.context = this.context;
+      cfg.setPath(fn);
+      cfg.parent = this;
+      cfg.data = cfg.wrapMapping(cnode);
+      result = cfg;
+    }
+    return result;
+  }
+
+  evaluate(node) {
+    let result;
+    if (!(node instanceof ASTNode)) {
+      throw new Error(`evaluate() called on non-node ${node}`);
+    }
+    const k = node.kind;
+    if (node instanceof Token) {
+      const v = node.value;
+
+      if (SCALAR_TOKENS.has(k)) {
+        result = v;
+      } else if (k === WORD) {
+        if (v in this.context) {
+          result = this.context[v];
+        } else {
+          const e = new ConfigException(`Unknown variable: ${v}`);
+
+          e.location = node.start;
+          throw e;
+        }
+      } else if (k === BACKTICK) {
+        result = this.convertString(v);
+      } else {
+        throw new ConfigException(`Unable to evaluate ${node}`);
+      }
+    } else if (node instanceof MappingNode) {
+      result = this.wrapMapping(node);
+    } else if (node instanceof ListNode) {
+      result = this.wrapList(node);
+    } else {
+      switch (k) {
+        case AT:
+          result = this.evalAt(node);
+          break;
+        default:
+          throw new ConfigException(`Unable to evaluate ${node}`);
+      }
+    }
+    return result;
+  }
+
+  evaluated(v) {
+    if (v instanceof ASTNode) {
+      return this.evaluate(v);
+    }
+    return v;
+  }
+
+  baseGet(k, dv = MISSING) {
+    let result;
+
+    if ((this.cache !== null) && (k in this.cache)) {
+      result = this.cache[k];
+    } else if (this.data === null) {
+      throw new ConfigException('No data in configuration');
+    } else {
+      if (k in this.data.data) {
+        result = this.evaluated(this.data.get(k));
+      } else if (isIdentifier(k)) {
+        throw new ConfigException(`Not found in configuration: ${k}`);
+      } else {
+        // not an identifier. Treat as a path
+        this.refsSeen = {};
+        try {
+          result = this.getFromPath(parsePath(k));
+        } catch (e) {
+          if ((e instanceof InvalidPathException) ||
+            (e instanceof BadIndexException) ||
+            (e instanceof CircularReferenceException)) {
+            throw e;
+          }
+          if (dv === MISSING) {
+            throw new ConfigException(`Not found in configuration: ${k}`);
+          }
+          result = dv;
+        }
+      }
+    }
+    return result;
+  }
+
+  get(k, dv = MISSING) {
+    return unwrap(this.baseGet(k, dv));
+  }
+
+  asDict() {
+    return (this.data === null) ? {} : this.data.asDict();
   }
 }
 
@@ -1419,6 +1815,10 @@ module.exports = {
   makeFileStream: makeFileStream,
   makeParser: makeParser,
   parse: parse,
+  isIdentifier: isIdentifier,
+  parsePath: parsePath,
+  pathIterator: pathIterator,
+  toSource: toSource,
   Location: Location,
   TokenKind: TokenKind,
   Token: Token,
@@ -1433,5 +1833,8 @@ module.exports = {
   Config: Config,
   RecognizerException: RecognizerException,
   ParserException: ParserException,
-  ConfigException: ConfigException
+  ConfigException: ConfigException,
+  InvalidPathException: InvalidPathException,
+  BadIndexException: BadIndexException,
+  CircularReferenceException: CircularReferenceException
 };

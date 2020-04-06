@@ -27,10 +27,18 @@ const {
   MappingNode,
   ASTNode,
   Config,
+  // ConfigException,
+  InvalidPathException,
+  // BadIndexException,
+  // CircularReferenceException,
   makeStream,
   makeFileStream,
   makeParser,
-  parse
+  parse,
+  isIdentifier,
+  parsePath,
+  pathIterator,
+  toSource
 } = config;
 
 function makeTokenizer(s) {
@@ -588,7 +596,7 @@ function expressions(ops, rule, multiple = true) {
       return result;
     }
 
-    for (let i = 0; i < 1000; i++) {
+    for (let i = 0; i < 500; i++) {
       const op1 = ops[randIndex(size)];
       const op2 = ops[randIndex(size)];
       const k1 = makeTokenizer(op1).getToken().kind;
@@ -858,8 +866,8 @@ describe('Parser', function () {
   });
 });
 
-describe('Config', function() {
-  it('should handle initialization', function() {
+describe('Config', function () {
+  it('should handle initialization', function () {
     let cfg = new Config();
 
     cfg = new Config(dataFilePath('forms.cfg'));
@@ -873,6 +881,135 @@ describe('Config', function() {
       cfg = new Config(4);
     } catch (e) {
       assert.include(e.message, 'Expecting pathname or stream, got 4');
+    }
+  });
+
+  it('should handle identifiers', function () {
+    const cases = [
+      ["foo", true],
+      ["\u0935\u092e\u0938", true],
+      ["\u73b0\u4ee3\u6c49\u8bed\u5e38\u7528\u5b57\u8868", true],
+      ["foo ", false],
+      ["foo[", false],
+      ["foo [", false],
+      ["foo.", false],
+      ["foo .", false],
+      ["\u0935\u092e\u0938.", false],
+      ["\u73b0\u4ee3\u6c49\u8bed\u5e38\u7528\u5b57\u8868.", false],
+      ["9", false],
+      ["9foo", false],
+      ["hyphenated-key", false]
+    ];
+
+    cases.forEach(function (c) {
+      assert.equal(isIdentifier(c[0]), c[1], `failed for ${c[0]}`);
+    });
+  });
+
+  it('should handle duplicates', function () {
+    const dp = dataFilePath(path.join('derived', 'dupes.cfg'));
+    let cfg = new Config();
+
+    try {
+      cfg.loadFile(dp);
+      assert.fail('expected exception not thrown');
+    } catch (e) {
+      assert.include(e.message, 'Duplicate key foo seen at (4, 1) (previously at (1, 1))');
+    }
+    cfg.noDuplicates = false;
+    cfg.loadFile(dp);
+    assert.equal(cfg.get('foo'), 'not again!');
+  });
+
+  it('should handle variable lookup', function () {
+    const dp = dataFilePath(path.join('derived', 'context.cfg'));
+    let cfg = new Config(dp);
+    cfg.context = {
+      bozz: 'bozz-bozz'
+    };
+    assert.equal(cfg.get('baz'), 'bozz-bozz');
+    try {
+      cfg.get('bad');
+      assert.fail('expected exception not thrown');
+    } catch (e) {
+      assert.include(e.message, 'Unknown variable: ');
+    }
+  });
+
+  it('should handle path iteration', function () {
+    let p = parsePath('foo[bar].baz[2].bozz[a:b:c].fizz ');
+    let actual = Array.from(pathIterator(p));
+    let expected = [
+      W('foo', 1, 1),
+      ['[', 'bar'],
+      ['.', 'baz'],
+      ['[', 2],
+      ['.', 'bozz'],
+      [':', new SliceNode(W('a', 1, 22), W('b', 1, 24), W('c', 1, 26))],
+      ['.', 'fizz']
+    ];
+
+    assert.deepEqual(actual, expected);
+  });
+
+  it('should handle bad paths', function () {
+    const cases = [
+      ['foo[1, 2]', 'Invalid index at (1, 5): expected 1 expression, found 2'],
+      ['foo[1] bar', 'Invalid path: foo[1] bar'],
+      ['foo.123', 'Invalid path: foo.123'],
+      ['foo.', ' but got '],
+      ['foo[]', 'Invalid index at (1, 5): expected 1 expression, found 0'],
+      ['foo[1a]', 'Invalid character in number: a'],
+      ['4', null]
+    ];
+
+    cases.forEach(function (c) {
+      try {
+        parsePath(c[0]);
+        assert.fail('expected exception not thrown');
+      } catch (e) {
+        assert.equal(e.message, `Invalid path: ${c[0]}`);
+        if (e.cause) {
+          assert.include(e.cause.message, c[1], `failed for ${c[0]}`);
+        }
+      }
+    });
+  });
+
+  it('should handle conversion to source', function () {
+    const cases = [
+      'foo[::2]',
+      'foo[:]',
+      'foo[:2]',
+      'foo[2:]',
+      'foo[::1]',
+      'foo[::-1]'
+    ];
+
+    cases.forEach(function (c) {
+      let node = parsePath(c);
+
+      assert.equal(toSource(node), c);
+    });
+  });
+
+  it('should handle the "main" test config', function() {
+    const dp = dataFilePath(path.join('derived', 'main.cfg'));
+    const options = {includePath: dataFilePath('base')};
+    let cfg = new Config(dp, options);
+    let logConf = cfg.get('logging');
+
+    assert.instanceOf(logConf, Config);
+    let d = logConf.asDict();
+    let keys = Object.keys(d);
+    let expected = ['formatters', 'handlers', 'loggers', 'root'];
+    keys.sort();
+    assert(_.isEqual(keys, expected));
+    try {
+      logConf.get('"handlers.file/filename');
+      assert.fail('expected exception not thrown');
+    } catch (e) {
+      assert.instanceOf(e, InvalidPathException);
     }
   });
 });
