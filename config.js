@@ -286,7 +286,7 @@ function parseEscapes(inp) {
   return result;
 }
 
-var IDENTIFIER_PATTERN = /^\p{L}[\p{L}\p{Nd}]*$/u;
+var IDENTIFIER_PATTERN = /^[\p{L}_][\p{L}\p{Nd}_]*$/u;
 
 function isIdentifier(s) {
   return IDENTIFIER_PATTERN.test(s);
@@ -1326,22 +1326,25 @@ function parse(s, rule) {
 // Config API
 
 function parsePath(s) {
-  const parser = makeParser(s);
-
-  if (parser.next.kind !== WORD) {
-    throw new InvalidPathException(`Invalid path: ${s}`);
-  }
   try {
+    const parser = makeParser(s);
+
+    if (parser.next.kind !== WORD) {
+      throw new InvalidPathException(`Invalid path: ${s}`);
+    }
     let result = parser.primary();
     if (!parser.atEnd()) {
       throw new InvalidPathException(`Invalid path: ${s}`);
     }
     return result;
   } catch (e) {
-    let ipe = new InvalidPathException(`Invalid path: ${s}`);
+    if (!(e instanceof InvalidPathException)) {
+      let ipe = new InvalidPathException(`Invalid path: ${s}`);
 
-    ipe.cause = e;
-    throw ipe;
+      ipe.cause = e;
+      e = ipe;
+    }
+    throw e;
   }
 }
 
@@ -1430,6 +1433,108 @@ function unwrap(o) {
   return o;
 }
 
+function mergeDicts(target, source) {
+  for (const k in source) {
+    const v = source[k];
+
+    if ((k in target) && (typeof target[k] == 'object') && (typeof v == 'object')) {
+      mergeDicts(target[k], v);
+    } else {
+      target[k] = v;
+    }
+  }
+}
+
+function resolve(s) {
+  let g = globalThis || window;
+  let result = s;
+
+  const parts = s.split('.');
+  if (parts[0] in g) {
+    result = g[parts.shift()];
+
+    while (parts.length > 0) {
+      if (parts[0] in result) {
+        result = result[parts.shift()];
+      } else {
+        // failed to find something
+        return s;
+      }
+    }
+  }
+  return result;
+}
+
+function toComplex(v) {
+  if (v instanceof Complex) {
+    return v;
+  }
+  if (typeof v !== 'number') {
+    throw new ConfigException(`cannot convert to Complex: ${v}`);
+  }
+  return new Complex(v, 0);
+}
+
+function intDiv(a, b) {
+  const result = a / b;
+
+  return (result >= 0) ? Math.floor(result) : Math.ceil(result);
+}
+
+var ISO_DATETIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(([ T])(((\d{2}):(\d{2}):(\d{2}))(\.\d{1,6})?(([+-])(\d{2}):(\d{2})(:(\d{2})(\.\d{1,6})?)?)?))?$/;
+var ENV_VALUE_PATTERN = /^\$(\w+)(\|(.*))?$/;
+var DOTTED_OBJECT_PATTERN = /^([A-Za-z_]\w*(\.[A-Za-z_]\w*)*)$/;
+
+function defaultStringConverter(s) {
+  let result = s;
+  let m = s.match(ISO_DATETIME_PATTERN);
+
+  if (m !== null) {
+    const year = parseInt(m[1]);
+    const month = parseInt(m[2]);
+    const day = parseInt(m[3]);
+    const hasTime = m[5] !== undefined;
+
+    if (!hasTime) {
+      result = new Date(year, month - 1, day);
+    } else {
+      const hour = parseInt(m[8]);
+      const minute = parseInt(m[9]);
+      const second = parseInt(m[10]);
+      const ms = m[11] === undefined ? 0 : parseFloat(m[11]) * 1.0e3;
+      const hasOffset = m[13] !== undefined;
+
+      result = new Date(year, month - 1, day, hour, minute, second, ms);
+      if (hasOffset) {
+        const sign = m[13] === '+' ? 1 : -1;
+        const ohour = parseInt(m[14]);
+        const ominute = parseInt(m[15]);
+        const osecond = m[17] === undefined ? 0 : parseInt(m[17]);
+        const oms = m[18] === undefined ? 0 : parseFloat(m[18]) * 1.0e3;
+        const offset = oms + osecond + ominute * 60 + ohour * 3600;
+
+        result = new Date(result.getTime() + sign * offset);
+      }
+    }
+  } else {
+    m = s.match(ENV_VALUE_PATTERN);
+    if (m !== null) {
+      const varName = m[1];
+      const hasPipe = m[2] !== undefined;
+      const dv = hasPipe ? m[3] : null;
+
+      result = process.env[varName] || dv;
+    } else {
+      m = s.match(DOTTED_OBJECT_PATTERN);
+
+      if (m !== null) {
+        result = resolve(s);
+      }
+    }
+  }
+  return result;
+}
+
 class DictWrapper {
   constructor(config, data) {
     this.config = config;
@@ -1476,9 +1581,11 @@ class ListWrapper {
     }
     return this.data[i];
   }
+
   get(i) {
     return this.config.evaluated(this.baseGet(i));
   }
+
   asList() {
     const result = [];
     const cfg = this.config;
@@ -1508,7 +1615,7 @@ const defaults = {
 };
 
 const MISSING = new Object();
-const PROPNAMES = 'noDuplicates strictConversions cached'.split(' ');
+const PROPNAMES = 'noDuplicates strictConversions includePath cached'.split(' ');
 
 class Config {
   constructor(pathOrReader, options) {
@@ -1531,7 +1638,8 @@ class Config {
     this.data = null;
     this.path = null;
     this.rootDir = null;
-    this.refsSeen = {};
+    this.stringConverter = defaultStringConverter;
+    this.refsSeen = new Set();
 
     this.cache = this.cached ? null : {};
 
@@ -1666,6 +1774,241 @@ class Config {
     return result;
   }
 
+  evalReference(node) {
+    return this.getFromPath(node);
+  }
+
+  mergeDictWrappers(lhs, rhs) {
+    let result = lhs.asDict();
+
+    mergeDicts(result, rhs.asDict());
+    return new DictWrapper(this, result);
+  }
+
+  evalAdd(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    const tlhs = typeof lhs;
+    const trhs = typeof rhs;
+    let result;
+
+    if ((lhs instanceof DictWrapper) && (rhs instanceof DictWrapper)) {
+      result = this.mergeDictWrappers(lhs, rhs);
+    } else if ((tlhs == 'string') && (trhs === 'string')) {
+      result = lhs + rhs;
+    } else if ((tlhs == 'number') && (trhs === 'number')) {
+      result = lhs + rhs;
+    } else if ((lhs instanceof ListWrapper) && (rhs instanceof ListWrapper)) {
+      result = new ListWrapper(this, lhs.asList().concat(rhs.asList()));
+    } else if ((lhs instanceof Complex) || (rhs instanceof Complex)) {
+      result = toComplex(lhs).add(toComplex(rhs));
+    } else {
+      throw new ConfigException(`unable to add ${lhs} and ${rhs}`);
+    }
+    return result;
+  }
+
+  evalSubtract(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    let result;
+
+    if ((lhs instanceof DictWrapper) && (rhs instanceof DictWrapper)) {
+      result = {};
+      for (const [k, v] of Object.entries(lhs.data)) {
+        if (!(k in rhs.data)) {
+          result[k] = lhs.get(k);
+        }
+      }
+      return new DictWrapper(lhs.config, result);
+    } else if ((typeof lhs == 'number') && (typeof rhs === 'number')) {
+      result = lhs - rhs;
+    } else if ((lhs instanceof Complex) || (rhs instanceof Complex)) {
+      result = toComplex(lhs).sub(toComplex(rhs));
+    } else {
+      throw new ConfigException(`unable to subtract ${rhs} from ${lhs}`);
+    }
+    return result;
+  }
+
+  negateNode(node) {
+    const operand = this.evaluate(node.operand);
+
+    if (operand instanceof Complex) {
+      return operand.neg();
+    }
+    if (typeof operand !== 'number') {
+      throw new ConfigException(`unable to negate ${operand}`);
+    }
+    return -operand;
+  }
+
+  evalMultiply(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    let result;
+
+    if ((typeof lhs == 'number') && (typeof rhs === 'number')) {
+      result = lhs * rhs;
+    } else if ((lhs instanceof Complex) || (rhs instanceof Complex)) {
+      result = toComplex(lhs).mul(toComplex(rhs));
+    } else {
+      throw new ConfigException(`unable to multiply ${lhs} by ${rhs}`);
+    }
+    return result;
+  }
+
+  evalDivide(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    let result;
+
+    if ((typeof lhs == 'number') && (typeof rhs === 'number')) {
+      result = lhs / rhs;
+    } else if ((lhs instanceof Complex) || (rhs instanceof Complex)) {
+      result = toComplex(lhs).div(toComplex(rhs));
+    } else {
+      throw new ConfigException(`unable to divide ${lhs} by ${rhs}`);
+    }
+    return result;
+  }
+
+  evalIntegerDivide(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    let result;
+
+    if (Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = intDiv(lhs, rhs);
+    } else {
+      throw new ConfigException(`unable to integer-divide ${lhs} by ${rhs}`);
+    }
+    return result;
+  }
+
+  evalModulo(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    let result;
+
+    if (Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = lhs % rhs;
+    } else {
+      throw new ConfigException(`unable to calculate ${lhs} modulo ${rhs}`);
+    }
+    return result;
+  }
+
+  evalPower(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    let result;
+
+    if ((typeof lhs == 'number') && (typeof rhs === 'number')) {
+      result = Math.pow(lhs, rhs);
+    } else if ((lhs instanceof Complex) || (rhs instanceof Complex)) {
+      result = toComplex(lhs).pow(toComplex(rhs));
+    } else {
+      throw new ConfigException(`unable to raise ${lhs} to the power of ${rhs}`);
+    }
+    return result;
+  }
+
+  evalAnd(node) {
+    const lhs = this.evaluate(node.left);
+
+    if (!lhs) {
+      return false;
+    }
+    return !!this.evaluate(node.right);
+  }
+
+  evalOr(node) {
+    const lhs = this.evaluate(node.left);
+
+    if (lhs) {
+      return true;
+    }
+    return !!this.evaluate(node.right);
+  }
+
+  evalBitwiseOr(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    const tlhs = typeof lhs;
+    const trhs = typeof rhs;
+    let result;
+
+    if ((lhs instanceof DictWrapper) && (rhs instanceof DictWrapper)) {
+      result = this.mergeDictWrappers(lhs, rhs);
+    } else if ((tlhs == 'number') && (trhs === 'number') && Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = lhs | rhs;
+    } else {
+      throw new ConfigException(`unable to compute bitwise-or of ${lhs} and ${rhs}`);
+    }
+    return result;
+  }
+
+  evalBitwiseAnd(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    const tlhs = typeof lhs;
+    const trhs = typeof rhs;
+    let result;
+
+    if ((tlhs == 'number') && (trhs === 'number') && Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = lhs & rhs;
+    } else {
+      throw new ConfigException(`unable to compute bitwise-and of ${lhs} and ${rhs}`);
+    }
+    return result;
+  }
+
+  evalBitwiseXor(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    const tlhs = typeof lhs;
+    const trhs = typeof rhs;
+    let result;
+
+    if ((tlhs == 'number') && (trhs === 'number') && Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = lhs ^ rhs;
+    } else {
+      throw new ConfigException(`unable to compute bitwise-xor of ${lhs} and ${rhs}`);
+    }
+    return result;
+  }
+
+  evalLeftShift(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    const tlhs = typeof lhs;
+    const trhs = typeof rhs;
+    let result;
+
+    if ((tlhs == 'number') && (trhs === 'number') && Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = lhs << rhs;
+    } else {
+      throw new ConfigException(`unable to left-shift ${lhs} by ${rhs}`);
+    }
+    return result;
+  }
+
+  evalRightShift(node) {
+    const lhs = this.evaluate(node.left);
+    const rhs = this.evaluate(node.right);
+    const tlhs = typeof lhs;
+    const trhs = typeof rhs;
+    let result;
+
+    if ((tlhs == 'number') && (trhs === 'number') && Number.isInteger(lhs) && Number.isInteger(rhs)) {
+      result = lhs >> rhs;
+    } else {
+      throw new ConfigException(`unable to right-shift ${lhs} by ${rhs}`);
+    }
+    return result;
+  }
+
   evaluate(node) {
     let result;
     if (!(node instanceof ASTNode)) {
@@ -1700,6 +2043,55 @@ class Config {
         case AT:
           result = this.evalAt(node);
           break;
+        case DOLLAR:
+          result = this.evalReference(node);
+          break;
+        case PLUS:
+          result = this.evalAdd(node);
+          break;
+        case MINUS:
+          if (node instanceof BinaryNode) {
+            result = this.evalSubtract(node);
+          } else {
+            result = this.negateNode(node);
+          }
+          break;
+        case STAR:
+          result = this.evalMultiply(node);
+          break;
+        case SLASH:
+          result = this.evalDivide(node);
+          break;
+        case SLASHSLASH:
+          result = this.evalIntegerDivide(node);
+          break;
+        case MODULO:
+          result = this.evalModulo(node);
+          break;
+        case POWER:
+          result = this.evalPower(node);
+          break;
+        case BITOR:
+          result = this.evalBitwiseOr(node);
+          break;
+        case BITAND:
+          result = this.evalBitwiseAnd(node);
+          break;
+        case BITXOR:
+          result = this.evalBitwiseXor(node);
+          break;
+        case LSHIFT:
+          result = this.evalLeftShift(node);
+          break;
+        case RSHIFT:
+          result = this.evalRightShift(node);
+          break;
+        case AND:
+          result = this.evalAnd(node);
+          break;
+        case OR:
+          result = this.evalOr(node);
+          break;
         default:
           throw new ConfigException(`Unable to evaluate ${node}`);
       }
@@ -1714,6 +2106,170 @@ class Config {
     return v;
   }
 
+  asInt(node) {
+    const result = this.evaluate(node);
+
+    if (typeof result !== 'number') {
+      throw new ConfigException(`expected number, but got ${result}`);
+    }
+    return result;
+  }
+
+  getSlice(container, slice) {
+    let size = container.data.length;
+    let step = (slice.step === null) ? 1 : this.asInt(slice.step);
+
+    if (step === 0) {
+      throw new ConfigException('slice step cannot be zero');
+    }
+
+    let startIndex = (slice.startIndex === null) ? 0 : this.asInt(slice.startIndex);
+
+    if (startIndex < 0) {
+      if (startIndex >= -size) {
+        startIndex += size;
+      } else {
+        startIndex = 0;
+      }
+    } else if (startIndex >= size) {
+      startIndex = size - 1;
+    }
+
+    let stopIndex;
+
+    if (slice.stopIndex === null) {
+      stopIndex = size - 1;
+    } else {
+      stopIndex = this.asInt(slice.stopIndex);
+      if (stopIndex < 0) {
+        if (stopIndex >= -size) {
+          stopIndex += size;
+        } else {
+          stopIndex = 0;
+        }
+      }
+      if (stopIndex > size) {
+        stopIndex = size;
+      }
+      if (step < 0) {
+        stopIndex++;
+      } else {
+        stopIndex--;
+      }
+    }
+    if ((step < 0) && (startIndex < stopIndex)) {
+      const tmp = stopIndex;
+
+      stopIndex = startIndex;
+      startIndex = tmp;
+    }
+
+    let result = [];
+    let i = startIndex;
+    let notDone = (step > 0) ? (i <= stopIndex) : (i >= stopIndex);
+
+    while (notDone) {
+      result.push(container.data[i]);
+      i += step;
+      notDone = (step > 0) ? (i <= stopIndex) : (i >= stopIndex);
+    }
+    return new ListWrapper(this, result);
+  }
+
+  getFromPath(node) {
+    let pi = pathIterator(node);
+    let first = pi.next();
+    let result = this.baseGet(first.value.value);
+    let currentCfg = this;
+
+    function isRef(node) {
+      if (!(node instanceof ASTNode)) {
+        return false;
+      }
+      return node.kind === DOLLAR;
+    }
+
+    for (const item of pi) {
+      let [op, operand] = item;
+      const sliced = operand instanceof SliceNode;
+
+      if (!sliced && (op != DOT) && (operand instanceof ASTNode)) {
+        operand = currentCfg.evaluate(operand);
+      }
+      if (sliced && (!(result instanceof ListWrapper))) {
+        throw new BadIndexException('slices can only operate on lists');
+      }
+      if (((result instanceof DictWrapper) ||
+          (result instanceof Config)) && ((typeof operand !== 'string'))) {
+        throw new BadIndexException(`string required, but found ${operand}`);
+      }
+      if (result instanceof DictWrapper) {
+        if (operand in result.data) {
+          result = result.baseGet(operand);
+        } else {
+          throw new ConfigException(`Not found in configuration: ${operand}`);
+        }
+      } else if (result instanceof Config) {
+        currentCfg = result;
+        result = result.baseGet(operand);
+      } else if (result instanceof ListWrapper) {
+        const n = result.data.length;
+
+        if (typeof operand == 'number') {
+          if (operand < 0) {
+            if (operand >= -n) {
+              operand += n;
+            }
+          }
+          try {
+            result = result.baseGet(operand);
+          } catch (e) {
+            throw new BadIndexException(`index out of range: is ${operand}, must be between 0 and ${n - 1}`);
+          }
+        } else if (sliced) {
+          result = this.getSlice(result, operand);
+        } else {
+          throw new BadIndexException(`integer required, but found ${operand}`);
+        }
+      } else {
+        // result is not a Config, DictWrapper or ListWrapper.
+        // Just throw a generic "not in configuration" error
+        const p = toSource(path);
+        const ce = new ConfigException(`Not found in configuration: ${p}`);
+
+        throw ce;
+      }
+      if (isRef(result)) {
+        if (currentCfg.refsSeen.has(result)) {
+          const parts = [];
+
+          currentCfg.refsSeen.forEach(function (node) {
+            parts.push(`${toSource(node)} ${node.start}`);
+          });
+          parts.sort();
+          const msg = `Circular reference: ${parts.join(', ')}`;
+          throw new CircularReferenceException(msg);
+        }
+        currentCfg.refsSeen.add(result);
+      }
+      if (result instanceof MappingNode) {
+        result = currentCfg.wrapMapping(result);
+      } else if (result instanceof ListNode) {
+        result = currentCfg.wrapList(result);
+      }
+      if (result instanceof ASTNode) {
+        let e = currentCfg.evaluate(result);
+
+        if (e !== result) {
+          // TODO put back in container to prevent repeated evaluations
+          result = e;
+        }
+      }
+    }
+    this.refsSeen.clear();
+    return result;
+  }
+
   baseGet(k, dv = MISSING) {
     let result;
 
@@ -1725,10 +2281,13 @@ class Config {
       if (k in this.data.data) {
         result = this.evaluated(this.data.get(k));
       } else if (isIdentifier(k)) {
-        throw new ConfigException(`Not found in configuration: ${k}`);
+        if (dv === MISSING) {
+          throw new ConfigException(`Not found in configuration: ${k}`);
+        }
+        result = dv;
       } else {
         // not an identifier. Treat as a path
-        this.refsSeen = {};
+        this.refsSeen.clear();
         try {
           result = this.getFromPath(parsePath(k));
         } catch (e) {
@@ -1749,6 +2308,15 @@ class Config {
 
   get(k, dv = MISSING) {
     return unwrap(this.baseGet(k, dv));
+  }
+
+  convertString(s) {
+    let result = this.stringConverter(s);
+
+    if (this.strictConversions && (result === s)) {
+      throw new ConfigException(`unable to convert string '${s}'`);
+    }
+    return result;
   }
 
   asDict() {

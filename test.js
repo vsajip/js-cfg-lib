@@ -8,10 +8,13 @@ const stream = require('stream');
 const Complex = require('complex.js');
 const _ = require('lodash');
 
+const chai = require('chai');
 const {
   expect,
   assert
-} = require('chai');
+} = chai;
+const chaiAlmost = require('chai-almost');
+chai.use(chaiAlmost(1.0e-7));
 
 const config = require('./config');
 const {
@@ -846,8 +849,7 @@ describe('Parser', function () {
     let node = makeParser('foo[start]').expr();
     let expected = new BinaryNode(TokenKind.LBRACK, W('foo', 1, 1), W('start', 1, 5));
     expected.start = origin;
-    // for some reason, assert.strictEqual doesn't work here!
-    assert(_.isEqual(node, expected));
+    expect(node).to.eql(expected);
 
     // failure cases
     const failures = [
@@ -993,23 +995,489 @@ describe('Config', function () {
     });
   });
 
-  it('should handle the "main" test config', function() {
+  it('should handle slices and indices', function () {
+    const dp = dataFilePath(path.join('derived', 'test.cfg'));
+    const cfg = new Config(dp);
+    const theList = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+
+    // slices
+
+    expect(cfg.get('test_list[:]')).to.eql(theList);
+    expect(cfg.get('test_list[::]')).to.eql(theList);
+    expect(cfg.get('test_list[:20]')).to.eql(theList);
+    expect(cfg.get('test_list[-20:4]')).to.eql(theList.slice(0, 4));
+    expect(cfg.get('test_list[-20:20]')).to.eql(theList);
+    expect(cfg.get('test_list[2:]')).to.eql(theList.slice(2));
+    expect(cfg.get('test_list[-3:]')).to.eql(theList.slice(4));
+    expect(cfg.get('test_list[-2:2:-1]')).to.eql(['f', 'e', 'd']);
+    expect(cfg.get('test_list[::-1]')).to.eql(theList.slice().reverse());
+    expect(cfg.get('test_list[2:-2:2]')).to.eql(['c', 'e']);
+    expect(cfg.get('test_list[::2]')).to.eql(['a', 'c', 'e', 'g']);
+    expect(cfg.get('test_list[::3]')).to.eql(['a', 'd', 'g']);
+    expect(cfg.get('test_list[::2][::3]')).to.eql(['a', 'g']);
+
+    // indices
+
+    theList.forEach(function (v, i) {
+      assert.equal(cfg.get(`test_list[${i}]`), v);
+    });
+
+    // negative indices
+
+    const n = theList.length;
+    for (let i = n; i >= 1; i--) {
+      assert.equal(cfg.get(`test_list[-${i}]`), theList[n - i]);
+    }
+
+    // invalid indices
+
+    [n, n + 1, -(n + 1), -(n + 2)].forEach(function (i) {
+      try {
+        cfg.get(`test_list[${i}]`);
+        assert.fail('expected exception not thrown');
+      } catch (e) {
+        assert.include(e.message, 'index out of range: ');
+        assert.include(e.message, `, must be between 0 and ${n - 1}`);
+      }
+    });
+  });
+
+  it('should handle bad string conversions', function () {
+    let cfg = new Config();
+    let cases = ['foo'];
+
+    cases.forEach(function (c) {
+      let s;
+
+      cfg.strictConversions = true;
+      try {
+        s = cfg.convertString(c);
+        assert.fail('expected exception not thrown');
+      } catch (e) {
+        assert.equal(e.message, `unable to convert string '${c}'`);
+      }
+      cfg.strictConversions = false;
+      s = cfg.convertString(c);
+      assert.equal(s, c);
+    });
+  });
+
+  it('should handle circular references', function () {
+    const dp = dataFilePath(path.join('derived', 'test.cfg'));
+    const cfg = new Config(dp);
+    let cases = [
+      ['circ_list[1]', 'Circular reference: circ_list[1] (42, 5)'],
+      ['circ_map.a', 'Circular reference: circ_map.a (51, 8), circ_map.b (49, 8), circ_map.c (50, 8)']
+    ];
+
+    cases.forEach(function (c) {
+      try {
+        cfg.get(c[0]);
+        assert.fail('expected exception not thrown');
+      } catch (e) {
+        assert.equal(e.message, c[1]);
+      }
+    });
+  });
+
+  it('should handle paths across includes', function () {
+    const dp = dataFilePath(path.join('base', 'main.cfg'));
+    const cfg = new Config(dp);
+    let cases = [
+      ['logging.appenders.file.filename', 'run/server.log'],
+      ['logging.appenders.file.append', true],
+      ['logging.appenders.error.filename', 'run/server-errors.log'],
+      ['logging.appenders.error.append', false],
+      ['redirects.freeotp.url', 'https://freeotp.github.io/'],
+      ['redirects.freeotp.permanent', false]
+    ];
+
+    cases.forEach(function (c) {
+      assert.equal(cfg.get(c[0]), c[1]);
+    });
+  });
+
+  it('should handle the "main" test config', function () {
     const dp = dataFilePath(path.join('derived', 'main.cfg'));
-    const options = {includePath: dataFilePath('base')};
-    let cfg = new Config(dp, options);
-    let logConf = cfg.get('logging');
+    const options = {
+      includePath: [dataFilePath('base')]
+    };
+    const cfg = new Config(dp, options);
+    const logConf = cfg.get('logging');
 
     assert.instanceOf(logConf, Config);
     let d = logConf.asDict();
     let keys = Object.keys(d);
     let expected = ['formatters', 'handlers', 'loggers', 'root'];
     keys.sort();
-    assert(_.isEqual(keys, expected));
+    expect(keys).to.eql(expected);
     try {
       logConf.get('"handlers.file/filename');
       assert.fail('expected exception not thrown');
     } catch (e) {
       assert.instanceOf(e, InvalidPathException);
     }
+    assert.equal(logConf.get('foo', 'bar'), 'bar');
+    assert.equal(logConf.get('foo.bar', 'baz'), 'baz');
+    assert.equal(logConf.get('handlers.debug.levl', 'bozz'), 'bozz');
+    assert.equal(logConf.get('handlers.file.filename'), 'run/server.log');
+    assert.equal(logConf.get('handlers.debug.filename'), 'run/server-debug.log');
+    expect(logConf.get('root.handlers')).to.eql(['file', 'error', 'debug']);
+    expect(logConf.get('root.handlers[:2]')).to.eql(['file', 'error']);
+    expect(logConf.get('root.handlers[::2]')).to.eql(['file', 'debug']);
+
+    const test = cfg.get('test');
+    assert.instanceOf(test, Config);
+    assert.equal(test.get('float'), 1.0e-7);
+    assert.equal(test.get('float2'), 0.3);
+    assert.equal(test.get('float3'), 3.0);
+    assert.equal(test.get('list[1]'), 2);
+    assert.equal(test.get('dict.a'), 'b');
+    expect(test.get('date')).to.eql(new Date(2019, 2, 28));
+    let dt = new Date(2019, 2, 28, 23, 27, 4, 314.159);
+    dt = new Date(dt.getTime() + 3600 * 5 + 60 * 30);
+    expect(test.get('date_time')).to.eql(dt);
+    dt = new Date(2019, 2, 28, 23, 27, 4, 271.828);
+    expect(test.get('alt_date_time')).to.eql(dt);
+    dt = new Date(2019, 2, 28, 23, 27, 4);
+    expect(test.get('no_ms_time')).to.eql(dt);
+    assert.equal(test.get('computed'), 3.3);
+    assert.equal(test.get('computed2'), 2.7);
+    expect(test.get('computed3')).to.almost.equal(0.9);
+    assert.equal(test.get('computed4'), 10.0);
+    assert.instanceOf(cfg.get('base'), Config);
+    expect(cfg.get('combined_list')).to.eql([
+      'derived_foo', 'derived_bar', 'derived_baz',
+      'test_foo', 'test_bar', 'test_baz',
+      'base_foo', 'base_bar', 'base_baz'
+    ]);
+    expect(cfg.get('combined_map_1')).to.eql({
+      foo_key: 'base_foo',
+      bar_key: 'base_bar',
+      baz_key: 'base_baz',
+      base_foo_key: 'base_foo',
+      base_bar_key: 'base_bar',
+      base_baz_key: 'base_baz',
+      derived_foo_key: 'derived_foo',
+      derived_bar_key: 'derived_bar',
+      derived_baz_key: 'derived_baz',
+      test_foo_key: 'test_foo',
+      test_bar_key: 'test_bar',
+      test_baz_key: 'test_baz'
+    });
+    expect(cfg.get('combined_map_2')).to.eql({
+      derived_foo_key: 'derived_foo',
+      derived_bar_key: 'derived_bar',
+      derived_baz_key: 'derived_baz'
+    });
+    const n1 = cfg.get('number_1');
+    const n2 = cfg.get('number_2');
+    assert.equal(n1, 104);
+    assert.equal(n2, 175);
+    assert.equal(cfg.get('number_3'), n1 & n2);
+    assert.equal(cfg.get('number_4'), n1 ^ n2);
+
+    let cases = [
+      ['logging[4]', 'string required, but found 4'],
+      ['logging[:4]', 'slices can only operate on lists'],
+      ['no_such_key', 'Not found in configuration: no_such_key']
+    ];
+
+    cases.forEach(function (c) {
+      try {
+        cfg.get(c[0]);
+        assert.fail('expected exception not thrown');
+      } catch (e) {
+        assert.equal(e.message, c[1]);
+      }
+    });
+  });
+
+  it('should handle the "example" test config', function () {
+    const dp = dataFilePath(path.join('derived', 'example.cfg'));
+    const options = {
+      includePath: [dataFilePath('base')]
+    };
+    const cfg = new Config(dp, options);
+
+    assert.equal(cfg.get('snowman_escaped'), cfg.get('snowman_unescaped'));
+    assert.equal(cfg.get('snowman_unescaped'), '\u2603');
+    assert.equal(cfg.get('face_with_tears_of_joy'), '\ud83d\ude02');
+    assert.equal(cfg.get('unescaped_face_with_tears_of_joy'), '\ud83d\ude02');
+    expect(cfg.get('strings')).to.eql([
+      "Oscar Fingal O'Flahertie Wills Wilde", 'size: 5"',
+      "Triple quoted form\ncan span\n'multiple' lines",
+      "with \"either\"\nkind of 'quote' embedded within"
+    ]);
+
+    // special values
+
+    globalThis.path = path;
+    assert.equal(cfg.get('special_value_1'), path.delimiter);
+    assert.equal(cfg.get('special_value_2'), process.env['HOME']);
+    let dt = new Date(2019, 2, 28, 23, 27, 4, 314.159 + 123.456);
+    dt = new Date(dt.getTime() + 5 * 3600 + 30 * 60 + 43);
+    expect(cfg.get('special_value_3')).to.eql(dt);
+    assert.equal(cfg.get('special_value_4'), 'bar');
+
+    // integers
+
+    assert.equal(cfg.get('decimal_integer'), 123);
+    assert.equal(cfg.get('hexadecimal_integer'), 0x123);
+    assert.equal(cfg.get('octal_integer'), 83);
+    assert.equal(cfg.get('binary_integer'), 291);
+
+    // floats
+
+    assert.equal(cfg.get('common_or_garden'), 123.456);
+    assert.equal(cfg.get('leading_zero_not_needed'), 0.123);
+    assert.equal(cfg.get('trailing_zero_not_needed'), 123.0);
+    assert.equal(cfg.get('scientific_large'), 1.0e6);
+    assert.equal(cfg.get('scientific_small'), 1.0e-7);
+    assert.equal(cfg.get('expression_1'), 3.14159);
+
+    // complex
+
+    expect(cfg.get('expression_2')).to.eql(new Complex(3, 2));
+    expect(cfg.get('list_value[4]')).to.eql(new Complex(1, 3));
+
+    // Boolean
+
+    assert.equal(cfg.get('boolean_value'), true);
+    assert.equal(cfg.get('opposite_boolean_value'), false);
+    assert.equal(cfg.get('computed_boolean_1'), true);
+    assert.equal(cfg.get('computed_boolean_2'), false);
+
+    // list
+
+    expect(cfg.get('incl_list')).to.eql(['a', 'b', 'c']);
+
+    // mapping
+
+    expect(cfg.get('incl_mapping').asDict()).to.eql({
+      bar: 'baz',
+      foo: 'bar'
+    });
+    expect(cfg.get('incl_mapping_body').asDict()).to.eql({
+      baz: 'bozz',
+      fizz: 'buzz'
+    });
+
+  });
+
+  it('should handle expressions', function () {
+    const dp = dataFilePath(path.join('derived', 'test.cfg'));
+    const cfg = new Config(dp);
+
+    expect(cfg.get('dicts_added')).to.eql({
+      a: 'b',
+      c: 'd'
+    });
+    expect(cfg.get('nested_dicts_added')).to.eql({
+      a: {
+        b: 'c',
+        w: 'x'
+      },
+      d: {
+        e: 'f',
+        y: 'z'
+      }
+    });
+    expect(cfg.get('lists_added')).to.eql(['a', 1, 'b', 2]);
+    expect(cfg.get('list[:2]')).to.eql([1, 2]);
+    expect(cfg.get('dicts_subtracted')).to.eql({
+      a: 'b'
+    });
+    expect(cfg.get('nested_dicts_subtracted')).to.eql({});
+    expect(cfg.get('dict_with_nested_stuff')).to.eql({
+      a_list: [1, 2, {
+        a: 3
+      }],
+      a_map: {
+        k1: ['b', 'c', {
+          d: 'e'
+        }]
+      }
+    });
+    expect(cfg.get('dict_with_nested_stuff.a_list[:2]')).to.eql([1, 2]);
+    assert.equal(cfg.get('unary'), -4);
+    assert.equal(cfg.get('abcdefghijkl'), 'mno');
+    assert.equal(cfg.get('power'), 8);
+    assert.equal(cfg.get('computed5'), 2.5);
+    assert.equal(cfg.get('computed6'), 2);
+    expect(cfg.get('c3')).to.eql(new Complex(3, 1));
+    expect(cfg.get('c4')).to.eql(new Complex(5, 5));
+    assert.equal(cfg.get('computed8'), 2);
+    assert.equal(cfg.get('computed9'), 160);
+    assert.equal(cfg.get('computed10'), 62);
+
+    let cases = [
+      ['bad_include', '@ operand must be a string'],
+      ['computed7', 'Not found in configuration: float4']
+    ];
+
+    cases.forEach(function (c) {
+      try {
+        cfg.get(c[0]);
+        assert.fail('expected exception not thrown');
+      } catch (e) {
+        assert.include(e.message, c[1]);
+      }
+    });
+    assert.equal(cfg.get('dict.a'), 'b');
+  });
+
+  it('should handle forms', function () {
+    const dp = dataFilePath(path.join('derived', 'forms.cfg'));
+    const options = {
+      includePath: [dataFilePath('base')]
+    };
+    const cfg = new Config(dp, options);
+    let cases = [
+      ['modals.deletion.contents[0].id', 'frm-deletion'],
+      ['refs.delivery_address_field', {
+        kind: 'field',
+        type: 'textarea',
+        name: 'postal_address',
+        label: 'Postal address',
+        label_i18n: 'postal-address',
+        short_name: 'address',
+        placeholder: 'We need this for delivering to you',
+        ph_i18n: 'your-postal-address',
+        message: '',
+        required: true,
+        attrs: {
+          minlength: 10
+        },
+        grpclass: 'col-md-6'
+      }],
+      ['refs.delivery_instructions_field', {
+        kind: 'field',
+        type: 'textarea',
+        name: 'delivery_instructions',
+        label: 'Delivery Instructions',
+        short_name: 'notes',
+        placeholder: 'Any special delivery instructions?',
+        message: '',
+        label_i18n: 'delivery-instructions',
+        ph_i18n: 'any-special-delivery-instructions',
+        grpclass: 'col-md-6'
+      }],
+      ['refs.verify_field', {
+        kind: 'field',
+        type: 'input',
+        name: 'verification_code',
+        label: 'Verification code',
+        label_i18n: 'verification-code',
+        short_name: 'verification code',
+        placeholder: 'Your verification code (NOT a backup code)',
+        ph_i18n: 'verification-not-backup-code',
+        attrs: {
+          minlength: 6,
+          maxlength: 6,
+          autofocus: true
+        },
+        append: {
+          label: 'Verify',
+          type: 'submit',
+          classes: 'btn-primary'
+        },
+        message: '',
+        required: true
+      }],
+      ['refs.signup_password_field', {
+        kind: 'field',
+        type: 'password',
+        name: 'password',
+        label: 'Password',
+        label_i18n: 'password',
+        placeholder: 'The password you want to use on this site',
+        ph_i18n: 'password-wanted-on-site',
+        message: '',
+        toggle: true,
+        required: true
+      }],
+      ['refs.signup_password_conf_field', {
+        kind: 'field',
+        type: 'password',
+        name: 'password_conf',
+        label: 'Password confirmation',
+        label_i18n: 'password-confirmation',
+        placeholder: 'The same password, again, to guard against mistyping',
+        ph_i18n: 'same-password-again',
+        message: '',
+        toggle: true,
+        required: true
+      }],
+      ['fieldsets.signup_ident[0].contents[0]', {
+        kind: 'field',
+        type: 'input',
+        name: 'display_name',
+        label: 'Your name',
+        label_i18n: 'your-name',
+        placeholder: 'Your full name',
+        ph_i18n: 'your-full-name',
+        message: '',
+        data_source: 'user.display_name',
+        required: true,
+        attrs: {
+          autofocus: true
+        },
+        grpclass: 'col-md-6'
+      }],
+      ['fieldsets.signup_ident[0].contents[1]', {
+        kind: 'field',
+        type: 'input',
+        name: 'familiar_name',
+        label: 'Familiar name',
+        label_i18n: 'familiar-name',
+        placeholder: 'If not just the first word in your full name',
+        ph_i18n: 'if-not-first-word',
+        data_source: 'user.familiar_name',
+        message: '',
+        grpclass: 'col-md-6'
+      }],
+      ['fieldsets.signup_ident[1].contents[0]', {
+        kind: 'field',
+        type: 'email',
+        name: 'email',
+        label: 'Email address (used to sign in)',
+        label_i18n: 'email-address',
+        short_name: 'email address',
+        placeholder: 'Your email address',
+        ph_i18n: 'your-email-address',
+        message: '',
+        required: true,
+        data_source: 'user.email',
+        grpclass: 'col-md-6'
+      }],
+      ['fieldsets.signup_ident[1].contents[1]', {
+        kind: 'field',
+        type: 'input',
+        name: 'mobile_phone',
+        label: 'Phone number',
+        label_i18n: 'phone-number',
+        short_name: 'phone number',
+        placeholder: 'Your phone number',
+        ph_i18n: 'your-phone-number',
+        classes: 'numeric',
+        message: '',
+        prepend: {
+          icon: 'phone'
+        },
+        attrs: {
+          maxlength: 10
+        },
+        required: true,
+        data_source: 'customer.mobile_phone',
+        grpclass: 'col-md-6'
+      }]
+    ];
+
+    cases.forEach(function (c) {
+      const v = cfg.get(c[0]);
+
+      expect(v).to.eql(c[1]);
+    });
   });
 });
