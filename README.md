@@ -13,7 +13,7 @@ It overcomes a number of drawbacks of JSON when used as a configuration format:
 
 Installation
 ============
-You can use this package using `npm install cfg-lib` and then `require('config')`  in your code.
+You can use this package using `npm install cfg-lib` and then `const config = require('cfg-lib')`  in your code.
 
 Exploration
 ============
@@ -43,9 +43,9 @@ Loading a configuration
 The configuration above can be loaded as shown below. In the REPL shell:
 
 ```
-> const config = require('config');
+> const config = require('cfg-lib');
 undefined
-> let cfg = new Config("test0.cfg");
+> let cfg = new config.Config("test0.cfg");
 undefined
 ```
 
