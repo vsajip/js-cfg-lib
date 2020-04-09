@@ -1,6 +1,6 @@
 {
   "name": "cfg-lib",
-  "version": "0.1.0",
+  "version": "0.1.0-1",
   "description": "A JavaScript library for working with the CFG configuration format.",
   "main": "config.js",
   "scripts": {
@@ -21,6 +21,7 @@
     "webpack-cli": "^3.3.11"
   },
   "dependencies": {
-    "complex.js": "^2.0.11"
+    "complex.js": "^2.0.11",
+    "lodash.clonedeep": "^4.5.0"
   }
 }

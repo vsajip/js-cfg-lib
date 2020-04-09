@@ -5,7 +5,7 @@ var path = require('path');
 const stream = require('stream');
 const util = require('util');
 
-const _ = require('lodash');
+const clonedeep = require('lodash.clonedeep');
 const Complex = require('complex.js');
 
 function makeStream(s) {
@@ -1622,7 +1622,7 @@ const PROPNAMES = 'noDuplicates strictConversions includePath cached'.split(' ')
 
 class Config {
   constructor(pathOrReader, options) {
-    let d = _.cloneDeep(defaults);
+    let d = clonedeep(defaults);
 
     if (typeof options !== 'object') {
       options = d;
