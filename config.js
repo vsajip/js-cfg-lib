@@ -1462,6 +1462,9 @@ function resolve(s) {
       }
     }
   }
+  if (typeof result === 'function') {
+    result = result();
+  }
   return result;
 }
 
@@ -1641,7 +1644,7 @@ class Config {
     this.stringConverter = defaultStringConverter;
     this.refsSeen = new Set();
 
-    this.cache = this.cached ? null : {};
+    this.cache = this.cached ? {} : null;
 
     if (typeof pathOrReader === 'string') {
       this.loadFile(pathOrReader);
@@ -1670,6 +1673,9 @@ class Config {
       throw new ConfigException('Root configuration must be a mapping');
     }
     this.data = this.wrapMapping(node);
+    if (this.cache !== null) {
+      this.cache = {};
+    }
   }
 
   wrapMapping(mn) {
@@ -2301,6 +2307,9 @@ class Config {
           }
           result = dv;
         }
+      }
+      if (this.cache !== null) {
+        this.cache[k] = result;
       }
     }
     return result;

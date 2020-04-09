@@ -1214,6 +1214,7 @@ describe('Config', function () {
 
     globalThis.path = path;
     assert.equal(cfg.get('special_value_1'), path.delimiter);
+    delete globalThis.path;
     assert.equal(cfg.get('special_value_2'), process.env['HOME']);
     let dt = new Date(2019, 2, 28, 23, 27, 4, 314.159 + 123.456);
     dt = new Date(dt.getTime() + 5 * 3600 + 30 * 60 + 43);
@@ -1479,5 +1480,30 @@ describe('Config', function () {
 
       expect(v).to.eql(c[1]);
     });
+  });
+
+  it('should handle caching', function() {
+    const dp = dataFilePath(path.join('derived', 'test.cfg'));
+    const cfg = new Config(dp, {cached: true});
+    const time = {now: function() { return new Date(); }}
+
+    globalThis.time = time;
+    const v1 = cfg.get('time_now');
+
+    setTimeout(function() {
+      const v2 = cfg.get('time_now');
+
+      expect(v1).to.eql(v2);
+      cfg.cache = null;
+      cfg.cached = false;
+      const v3 = cfg.get('time_now');
+      
+      setTimeout(function() {
+        const v4 = cfg.get('time_now');
+  
+        expect(v3).to.not.eql(v4);
+        delete globalThis.time;
+      }, 50);
+    }, 50);
   });
 });
