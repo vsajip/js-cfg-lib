@@ -43,40 +43,36 @@ Loading a configuration
 The configuration above can be loaded as shown below. In the REPL shell:
 
 ```
-D> import config;
-config
-D> Config cfg; shared static this() { cfg = null; }
-cfg
-D> cfg = new Config("tmp/test0.cfg")
-Config(test0.cfg)
+> const config = require('config');
+undefined
+> let cfg = new Config("test0.cfg");
+undefined
 ```
-The one-time-per-session dance with `shared static this()` is currently needed due to a limitation of `drepl`.
 
 Access elements with keys
 =========================
-Accessing elements of the configuration with a simple key is just like using an associative array:
+Accessing elements of the configuration with a simple key uses the `get` method:
 
 ```
-D> cfg["a"]
-Hello,
-D> cfg["b"]
-world!
+> cfg.get('a')
+'Hello, '
+> cfg.get('b')
+'world!'
 ```
-You can see the types and values of the returned objects are as expected.
 
 Access elements with paths
 ==========================
 As well as simple keys, elements  can also be accessed using `path` strings:
 ```
-D> cfg["c.d"]
-e
+> cfg.get('c.d')
+'e'
 ```
 Here, the desired value is obtained in a single step, by (under the hood) walking the path `c.d` – first getting the mapping at key `c`, and then the value at `d` in the resulting mapping.
 
 Note that you can have simple keys which look like paths:
 ```
-D> cfg["f.g"]
-h
+> cfg.get('f.g')
+'h'
 ```
 If a key is given that exists in the configuration, it is used as such, and if it is not present in the configuration, an attempt is made to interpret it as a path. Thus, `f.g` is present and accessed via key, whereas `c.d` is not an existing key, so is interpreted as a path.
 
@@ -84,20 +80,20 @@ Access to date/time objects
 ===========================
 You can also get native date/time objects from a configuration, by using an ISO date/time pattern in a `backtick-string`:
 ```
-D> cfg["christmas_morning"]
-2019-Dec-25 08:39:49
+> cfg.get('christmas_morning')
+2019-12-25T08:39:49.000Z
 ```
 Access to environment variables
 ===============================
 
 To access an environment variable, use a `backtick-string` of the form `$VARNAME`:
 ```
-D> cfg["home"]
-/home/vinay
+> cfg.get('home')
+'/home/vinay'
 ```
 You can specify a default value to be used if an environment variable isn’t present using the `$VARNAME|default-value` form. Whatever string follows the pipe character (including the empty string) is returned if `VARNAME` is not a variable in the environment.
 ```
-D> cfg["foo"]
-bar
+> cfg.get('foo')
+'bar'
 ```
 For more information, see [the CFG documentation](https://docs.red-dove.com/cfg/index.html).
