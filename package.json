@@ -10,8 +10,9 @@
   "keywords": [
     "configuration"
   ],
-  "author": "Vinay Sajip",
+  "author": "Vinay Sajip <vinay_sajip@yahoo.co.uk> (https://www.red-dove.com/)",
   "license": "BSD-3-Clause",
+  "homepage": "https://docs.red-dove.com/cfg/index.html",
   "devDependencies": {
     "chai": "^4.2.0",
     "chai-almost": "^1.0.1",
