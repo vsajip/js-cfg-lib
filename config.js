@@ -212,6 +212,13 @@ function is_whitespace(c) {
   return /\s/.test(c);
 }
 
+/*
+ * Note: due to browser shortcomings, the \p{...} escapes aren't available in Firefox (amongst others).
+ * Ways of overcoming this:
+ *
+ * a) Provide alternatives for use with Firefox and switch conditionally in the bundling step.
+ * b) Use a third-party library such as XRegexp which will handle the browser differences for us.
+ */
 function is_letter(c) {
   // N.B. \p{...} not supported in Firefox :-(
   return /\p{L}/u.test(c);
