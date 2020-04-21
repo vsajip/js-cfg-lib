@@ -1311,10 +1311,13 @@ describe('Config', function () {
     assert.equal(cfg.get('computed8'), 2);
     assert.equal(cfg.get('computed9'), 160);
     assert.equal(cfg.get('computed10'), 62);
+    assert.equal(cfg.get('interp'), 'A-4 a test_foo true 10 1e-7 1 b [a, c, e, g]Z');
+    assert.equal(cfg.get('interp2'), '{a: b}');
 
     let cases = [
       ['bad_include', '@ operand must be a string'],
-      ['computed7', 'Not found in configuration: float4']
+      ['computed7', 'Not found in configuration: float4'],
+      ['bad_interp', 'unable to convert string ']
     ];
 
     cases.forEach(function (c) {

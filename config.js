@@ -1,7 +1,7 @@
 'use strict';
 
-var fs = require('fs');
-var path = require('path');
+const fs = require('fs');
+const path = require('path');
 const stream = require('stream');
 const util = require('util');
 
@@ -1433,6 +1433,29 @@ function unwrap(o) {
   return o;
 }
 
+function stringFor(o) {
+  let result;
+
+  if (Array.isArray(o)) {
+    const parts = [];
+
+    for (let i = 0; i < o.length; i++) {
+      parts.push(stringFor(o[i]));
+    }
+    result = `[${parts.join(', ')}]`;
+  } else if (typeof o == 'object') {
+    const parts = [];
+
+    for (var key of Object.keys(o)) {
+      parts.push(`${key}: ${stringFor(o[key])}`);
+    }
+    result = `{${parts.join(', ')}}`;
+  } else {
+    result = o.toString();
+  }
+  return result;
+}
+
 function mergeDicts(target, source) {
   for (const k in source) {
     const v = source[k];
@@ -1487,8 +1510,9 @@ function intDiv(a, b) {
 var ISO_DATETIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})(([ T])(((\d{2}):(\d{2}):(\d{2}))(\.\d{1,6})?(([+-])(\d{2}):(\d{2})(:(\d{2})(\.\d{1,6})?)?)?))?$/;
 var ENV_VALUE_PATTERN = /^\$(\w+)(\|(.*))?$/;
 var DOTTED_OBJECT_PATTERN = /^([A-Za-z_]\w*(\.[A-Za-z_]\w*)*)$/;
+var INTERPOLATION_PATTERN = /\$\{([^}]+)\}/g;
 
-function defaultStringConverter(s) {
+function defaultStringConverter(s, cfg) {
   let result = s;
   let m = s.match(ISO_DATETIME_PATTERN);
 
@@ -1532,6 +1556,36 @@ function defaultStringConverter(s) {
 
       if (m !== null) {
         result = resolve(s);
+      } else if (m = INTERPOLATION_PATTERN.exec(s)) {
+        let cp = 0;
+        const parts = [];
+        let failed = false;
+
+        while (m !== null) {
+          let sp = m.index;
+          let ep = INTERPOLATION_PATTERN.lastIndex;
+          const path = s.substring(sp + 2, ep - 1);
+
+          if (cp < sp) {
+            parts.push(s.substring(cp, sp));
+          }
+          try {
+            const v = cfg.get(path);
+
+            parts.push(stringFor(v));
+          } catch (e) {
+            failed = true;
+            break;
+          }
+          cp = ep;
+          m = INTERPOLATION_PATTERN.exec(s);
+        }
+        if (!failed) {
+          if (cp < s.length) {
+            parts.push(s.substring(cp));
+          }
+          result = parts.join('');
+        }
       }
     }
   }
@@ -2320,7 +2374,7 @@ class Config {
   }
 
   convertString(s) {
-    let result = this.stringConverter(s);
+    let result = this.stringConverter(s, this);
 
     if (this.strictConversions && (result === s)) {
       throw new ConfigException(`unable to convert string '${s}'`);
