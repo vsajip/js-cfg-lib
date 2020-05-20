@@ -1356,7 +1356,7 @@ describe('Config', function () {
         short_name: 'address',
         placeholder: 'We need this for delivering to you',
         ph_i18n: 'your-postal-address',
-        message: '',
+        message: ' ',
         required: true,
         attrs: {
           minlength: 10
@@ -1370,7 +1370,7 @@ describe('Config', function () {
         label: 'Delivery Instructions',
         short_name: 'notes',
         placeholder: 'Any special delivery instructions?',
-        message: '',
+        message: ' ',
         label_i18n: 'delivery-instructions',
         ph_i18n: 'any-special-delivery-instructions',
         grpclass: 'col-md-6'
@@ -1394,7 +1394,7 @@ describe('Config', function () {
           type: 'submit',
           classes: 'btn-primary'
         },
-        message: '',
+        message: ' ',
         required: true
       }],
       ['refs.signup_password_field', {
@@ -1405,7 +1405,7 @@ describe('Config', function () {
         label_i18n: 'password',
         placeholder: 'The password you want to use on this site',
         ph_i18n: 'password-wanted-on-site',
-        message: '',
+        message: ' ',
         toggle: true,
         required: true
       }],
@@ -1417,7 +1417,7 @@ describe('Config', function () {
         label_i18n: 'password-confirmation',
         placeholder: 'The same password, again, to guard against mistyping',
         ph_i18n: 'same-password-again',
-        message: '',
+        message: ' ',
         toggle: true,
         required: true
       }],
@@ -1429,7 +1429,7 @@ describe('Config', function () {
         label_i18n: 'your-name',
         placeholder: 'Your full name',
         ph_i18n: 'your-full-name',
-        message: '',
+        message: ' ',
         data_source: 'user.display_name',
         required: true,
         attrs: {
@@ -1446,7 +1446,7 @@ describe('Config', function () {
         placeholder: 'If not just the first word in your full name',
         ph_i18n: 'if-not-first-word',
         data_source: 'user.familiar_name',
-        message: '',
+        message: ' ',
         grpclass: 'col-md-6'
       }],
       ['fieldsets.signup_ident[1].contents[0]', {
@@ -1458,7 +1458,7 @@ describe('Config', function () {
         short_name: 'email address',
         placeholder: 'Your email address',
         ph_i18n: 'your-email-address',
-        message: '',
+        message: ' ',
         required: true,
         data_source: 'user.email',
         grpclass: 'col-md-6'
@@ -1473,7 +1473,7 @@ describe('Config', function () {
         placeholder: 'Your phone number',
         ph_i18n: 'your-phone-number',
         classes: 'numeric',
-        message: '',
+        message: ' ',
         prepend: {
           icon: 'phone'
         },
@@ -1508,10 +1508,10 @@ describe('Config', function () {
       cfg.cache = null;
       cfg.cached = false;
       const v3 = cfg.get('time_now');
-      
+
       setTimeout(function() {
         const v4 = cfg.get('time_now');
-  
+
         expect(v3).to.not.eql(v4);
         delete globalThis.time;
       }, 50);

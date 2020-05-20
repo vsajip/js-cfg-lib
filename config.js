@@ -361,7 +361,7 @@ class Tokenizer {
   }
 
   pushBack(c) {
-    if ((c == '\n') || !is_whitespace(c)) {
+    if (c !== null) {
       let pb = new PushBackInfo(c, this.char_location.copy(), this.location.copy());
 
       this.pushed_back.push(pb);
