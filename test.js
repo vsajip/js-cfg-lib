@@ -50,7 +50,7 @@ const {
   parsePath,
   pathIterator,
   toSource
-} = config;
+} = config.CFG;
 
 function makeTokenizer(s) {
   return new Tokenizer(makeStream(s));

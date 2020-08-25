@@ -2456,7 +2456,7 @@ TokenKind.BITXOR = BITXOR;
 TokenKind.ISNOT = ISNOT;
 TokenKind.NOTIN = NOTIN;
 
-module.exports = {
+var CFG = {
   makeStream: makeStream,
   makeFileStream: makeFileStream,
   makeParser: makeParser,
@@ -2483,4 +2483,8 @@ module.exports = {
   InvalidPathException: InvalidPathException,
   BadIndexException: BadIndexException,
   CircularReferenceException: CircularReferenceException
+};
+
+module.exports = {
+  CFG: CFG
 };
