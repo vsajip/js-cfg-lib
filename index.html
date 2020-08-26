@@ -4,24 +4,26 @@
 <head>
   <meta charset="utf-8">
   <title>CFG Playground</title>
-  <meta name="description" content="">
+  <meta name="description" content="CFG Playground">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://fonts.googleapis.com/css?family=Overpass|Overpass Mono|Roboto|Roboto Mono|Manrope&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css?family=Overpass|Overpass Mono|Roboto|Roboto Mono|Manrope&amp;display=swap">
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/css/bootstrap.min.css"
         integrity="sha256-Ww++W3rXBfapN8SZitAvc9jw2Xb+Ixt0rvDsmWmQyTo=" crossorigin="anonymous">
   <link rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css"
         integrity="sha256-eZrrJcwDc/3uDhsdt61sL2oOBY362qM3lon1gyExkL0=" crossorigin="anonymous">
+  <link rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/codemirror@5.54.0/lib/codemirror.css"
+        integrity="sha256-F8x+Z3ibZvrT6AYhdYRAhBaA77XYocFUTGA/lMGNVYE=" crossorigin="anonymous">
 
   <script src="https://cdn.jsdelivr.net/npm/jquery@3.4.1/dist/jquery.min.js"
           integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo=" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"
           integrity="sha256-9nt4LsWmLI/O24lTW89IzAKuBqEZ47l/4rh1+tH/NY8=" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dot@1.1.3/doT.min.js"
-          integrity="sha256-0Mj4wysSsxKrjqVsgnOgOeRZbPreFi/T3+zb+cyR7Jw=" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/lodash@4.17.15/lodash.min.js"
-          integrity="sha256-VeNaFBVDhoX3H+gJ37DpT/nTuZTdjYro9yBruHjVmoQ=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.54.0/lib/codemirror.js"
+          integrity="sha256-HMBMEGw3DHPgAM4ZYslxP1/75uRlvol/56G4+o+nud0=" crossorigin="anonymous"></script>
 
   <script src="dist/config.js"></script>
 </head>
@@ -31,18 +33,171 @@
     <p class="browserupgrade">You are using an <strong>outdated</strong> browser. Please <a href="https://browsehappy.com/">upgrade your browser</a> to improve your experience and security.</p>
   <![endif]-->
   <style>
+    html, body {
+      height: 100%;
+    }
     body {
       font-family: Overpass;
       font-size: 16px;
     }
+    .CodeMirror {
+      font-size: 14px;
+      height: 100%;
+    }
   </style>
-  <div class="p-3">
-    <p>This is a test page.</p>
+  <div class="p-2 d-flex h-100">
+    <div class="w-50 h-100 p-2">
+      <textarea id="source" class="w-100 h-100"># You can have comments anywhere in a configuration.
+{
+  # You can have standard JSON-like key-value mapping.
+  "writer": "Oscar Fingal O'Flahertie Wills Wilde",
+  # But also use single-quotes for keys and values.
+  'a dimension': 'length: 5"',
+  # You can use identifiers for the keys.
+  string_value: 'a string value',
+  integer_value: 3,
+  float_value = 2.71828,         # you can use = instead of : as a key-value separator
+  boolean_value: true,           # these values are just like in JSON
+  opposite_boolean_value: false,
+  null_value: null
+  list_value: [
+    123,
+    4.5  # note the absence of a comma - a newline acts as a separator, too.
+    [
+      1,
+      'A',
+      2,
+      'b',  # note the trailing comma - doesn't cause errors
+    ]
+  ]  # a comma isn't needed here.
+  nested_mapping: {
+    integer_as_hex: 0x123
+    float_value: .14159,  # note the trailing comma - doesn't cause errors
+  } # no comma needed here either.
+  # You can use escape sequences ...
+  snowman_escaped: '\u2603'
+  # or not, and use e.g. utf-8 encoding.
+  snowman_unescaped: '☃'
+  # You can refer to code points outside the Basic Multilingual Plane
+  face_with_tears_of_joy: '\U0001F602'
+  unescaped_face_with_tears_of_joy: '😂'
+  # Include sub-configurations.
+  logging: @'logging.cfg',
+  # Refer to other values in this configuration.
+  refer_1: ${string_value},                  # -> 'a string value'
+  refer_2: ${list_value[1]},                 # -> 4.5
+  refer_3: ${nested_mapping.float_value},    # -> 0.14159
+  # Special values are implementation-dependent. On Python, for example:
+  s_val_1: `sys:stderr`,                     # -> module attribute sys.stderr
+  s_val_2: `$LANG|en_GB.UTF-8`               # -> environment var with default
+  s_val_3: `2019-03-28T23:27:04.314159`      # -> date/time value
+
+  # Expressions.
+  # N.B. backslash immediately followed by newline is seen as a continuation:
+  pi_approx: ${integer_value} + \
+              ${nested_mapping.float_value}   # -> 3.14159
+  sept_et_demi: ${integer_value} + \
+                ${list_value[1]}             # -> 7.5
+}</textarea>
+    </div>
+    <div class="w-50 h-100 p-2">
+      <textarea id="output" class="w-100 h-100">TBD</textarea>
+    </div>
   </div>
   <script>
-    (function() {
-      console.log(CFG);
-    })();
+    // define a CFG mode for the editor.
+
+    CodeMirror.defineMode('cfg', function(config, modeConfig) {
+
+      // return the mode object
+      return {
+        startState: function() {
+          return { line: 1};
+        },
+        blankLine: function(state) {
+          state.line++;
+        },
+        token: function(stream, state) {
+          let s = stream.peek();
+          let result = null;
+
+          if (s === ' ') {
+            stream.eatSpace();
+          }
+          else if (s === '#') {
+            stream.skipToEnd();
+            result = 'comment';
+          }
+          else if ((s === '"') || (s === "'") || (s === '\`')) {
+            let quote = stream.next();
+            let last = null;
+
+            while (s = stream.next()) {
+              if ((s === quote) && (last !== '\\')) {
+                break;
+              }
+              last = s;
+            }
+            result = s ? 'string' : 'string error';
+          }
+          else if (/[a-z_]/i.test(s)) {
+            let v = stream.match(/[a-z_]\w*/i, true);
+            result = 'variable';
+          }
+          else if (s === '0') {
+            if (stream.match(/0b[01]+/i, true)) {
+              result = 'number';
+            }
+            else if (stream.match(/0o[0-7]+/i, true)) {
+              result = 'number';
+            }
+            else if (stream.match(/0x[0-9a-f]+/i, true)) {
+              result = 'number';
+            }
+            else {
+              stream.next();
+              result = 'number';
+            }
+          }
+          else if (/\d/.test(s)) {
+            let v = stream.match(/\d+(\.\d*)?(e-?\d+)?/i, true);
+            result = 'number';
+          }
+          else if (s === '.') {
+            s = stream.next();
+            if (stream.match(/\d+(e-?\d+)?/i, true)) {
+              result = 'number';
+            }
+          }
+          else {
+            s = stream.next();
+          }
+          console.log(state, stream.current(), result);
+          if (!stream.peek()) {
+            state.line++;
+          }
+          return result;
+        }
+      }
+    });
+
+    $(document).ready(function() {
+      let $sta = $('#source');
+      let $ota = $('#output');
+
+      let sourceOptions = {
+        lineNumbers: true,
+        mode: 'cfg'
+      };
+      let outputOptions = {
+        lineNumbers: true,
+        readOnly: true,
+        mode: 'text/plain'
+      }
+
+      let scm = CodeMirror.fromTextArea($sta[0], sourceOptions);
+      let ocm = CodeMirror.fromTextArea($ota[0], outputOptions);
+    });
   </script>
 </body>
 
