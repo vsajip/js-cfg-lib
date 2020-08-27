@@ -46,8 +46,9 @@
     }
   </style>
   <div class="p-2 d-flex h-100">
-    <div class="w-50 h-100 p-2">
-      <textarea id="source" class="w-100 h-100"># You can have comments anywhere in a configuration.
+    <div class="w-50 h-100 p-2 d-flex flex-column">
+      <div>You can edit the CFG source below, and see the results at right:</div>
+      <textarea id="source" class="w-100 flex-grow-1"># You can have comments anywhere in a configuration.
 {
   # You can have standard JSON-like key-value mapping.
   "writer": "Oscar Fingal O'Flahertie Wills Wilde",
@@ -81,16 +82,13 @@
   # You can refer to code points outside the Basic Multilingual Plane
   face_with_tears_of_joy: '\U0001F602'
   unescaped_face_with_tears_of_joy: '😂'
-  # Include sub-configurations.
-  logging: @'logging.cfg',
   # Refer to other values in this configuration.
   refer_1: ${string_value},                  # -> 'a string value'
   refer_2: ${list_value[1]},                 # -> 4.5
   refer_3: ${nested_mapping.float_value},    # -> 0.14159
-  # Special values are implementation-dependent. On Python, for example:
-  s_val_1: `sys:stderr`,                     # -> module attribute sys.stderr
-  s_val_2: `$LANG|en_GB.UTF-8`               # -> environment var with default
-  s_val_3: `2019-03-28T23:27:04.314159`      # -> date/time value
+  # Special values are implementation-dependent.
+  s_val_1: `$LANG|en_GB.UTF-8`               # -> environment var with default
+  s_val_2: `2019-03-28T23:27:04.314159`      # -> date/time value
 
   # Expressions.
   # N.B. backslash immediately followed by newline is seen as a continuation:
@@ -100,8 +98,9 @@
                 ${list_value[1]}             # -> 7.5
 }</textarea>
     </div>
-    <div class="w-50 h-100 p-2">
-      <textarea id="output" class="w-100 h-100">TBD</textarea>
+    <div class="w-50 h-100 p-2 d-flex flex-column">
+      <div>The results of parsing the CFG at left are shown below:</div>
+      <textarea id="output" class="w-100 flex-grow-1"></textarea>
     </div>
   </div>
   <script>
@@ -142,7 +141,8 @@
           }
           else if (/[a-z_]/i.test(s)) {
             let v = stream.match(/[a-z_]\w*/i, true);
-            result = 'variable';
+            let w = v[0];
+            result = ((w === 'true') || (w === 'false') || (w === 'null')) ? 'atom' : 'variable';
           }
           else if (s === '0') {
             if (stream.match(/0b[01]+/i, true)) {
@@ -160,19 +160,32 @@
             }
           }
           else if (/\d/.test(s)) {
-            let v = stream.match(/\d+(\.\d*)?(e-?\d+)?/i, true);
+            let v = stream.match(/\d+(_\d+)*(\.(\d+(_\d)*)?)?(e-?\d+)?j?/i, true);
             result = 'number';
           }
           else if (s === '.') {
+            let v;
+
             s = stream.next();
-            if (stream.match(/\d+(e-?\d+)?/i, true)) {
+            if (v = stream.match(/\d+(_\d+)*(e-?\d+(_\d+)*)?j?/i, true)) {
               result = 'number';
+            }
+            else {
+              result = 'operator';
+            }
+          }
+          else if ('=<>&|^+-*/%!'.indexOf(s) >= 0) {
+            if (stream.match(/==|[<>!]=?|<>|&&|[|][|]?/, true)) {
+              result = 'operator';
+            }
+            else {
+              s = stream.next();
             }
           }
           else {
             s = stream.next();
           }
-          console.log(state, stream.current(), result);
+          // console.log(state, stream.current(), result);
           if (!stream.peek()) {
             state.line++;
           }
@@ -180,6 +193,44 @@
         }
       }
     });
+
+    let ocm;
+
+    function logTokens(s) {
+      let stream = CFG.makeStream(s);
+      let tokenizer = new CFG.Tokenizer(stream);
+      let token;
+
+      while (token = tokenizer.getToken()) {
+        console.log(token);
+        if (token.kind === CFG.TokenKind.EOF) {
+          break;
+        }
+      }
+    }
+
+    function populateOutput(cm) {
+      let s = cm.getDoc().getValue();
+      try {
+        let stream = CFG.makeStream(s);
+        let cfg = new CFG.Config(stream);
+        let d = cfg.asDict();
+        let o = JSON.stringify(d, null, 2);
+        ocm.getDoc().setValue(o);
+      }
+      catch (err) {
+        let loc = err.location;
+        let lines = s.split('\n');
+
+        console.log(lines);
+        logTokens(s);
+        console.error('error:', err);
+      }
+    }
+
+    function onChange(cm, e) {
+      populateOutput(cm);
+    }
 
     $(document).ready(function() {
       let $sta = $('#source');
@@ -192,11 +243,14 @@
       let outputOptions = {
         lineNumbers: true,
         readOnly: true,
-        mode: 'text/plain'
+        mode: 'application/json'
       }
 
       let scm = CodeMirror.fromTextArea($sta[0], sourceOptions);
-      let ocm = CodeMirror.fromTextArea($ota[0], outputOptions);
+      ocm = CodeMirror.fromTextArea($ota[0], outputOptions);
+
+      populateOutput(scm);
+      scm.on('change', onChange);
     });
   </script>
 </body>
