@@ -492,6 +492,8 @@ class Tokenizer {
         break;
       }
       if (c === '#') {
+        let nl_seen = false;
+
         text += c;
         while (true) {
           c = this.getChar();
@@ -499,6 +501,7 @@ class Tokenizer {
             break;
           }
           if (c === '\n') {
+            nl_seen = true;
             break;
           }
           if (c != '\r') {
@@ -510,9 +513,12 @@ class Tokenizer {
             this.pushBack(c);
             break;
           }
+          nl_seen = true;
         }
         kind = NEWLINE;
-        this.location.next_line();
+        if (!nl_seen) {
+          this.location.next_line();
+        }
         end_loc.update(this.location);
         end_loc.column -= 1;
         break;
@@ -2096,7 +2102,7 @@ class Config {
       if (SCALAR_TOKENS.has(k)) {
         result = v;
       } else if (k === WORD) {
-        if (v in this.context) {
+        if (this.context && (v in this.context)) {
           result = this.context[v];
         } else {
           const e = new ConfigException(`Unknown variable: ${v}`);
@@ -2105,7 +2111,13 @@ class Config {
           throw e;
         }
       } else if (k === BACKTICK) {
-        result = this.convertString(v);
+        try {
+          result = this.convertString(v);
+        }
+        catch (err) {
+          err.location = node.start;
+          throw err;
+        }
       } else {
         throw new ConfigException(`Unable to evaluate ${node}`);
       }
