@@ -116,6 +116,21 @@ function W(s, sl, sc) {
   return makeToken(TokenKind.WORD, s, s, sl, sc, sl, ec);
 }
 
+function T(k, s, v, sl, sc) {
+  let el, ec;
+
+  if (k === TokenKind.NEWLINE) {
+    el = sl + 1;
+    ec = 0;
+  }
+  else {
+    el = sl;
+    ec = sc + s.length - 1;
+  }
+
+  return makeToken(k, s, v, sl, sc, el, ec);
+}
+
 const SEPARATOR_PATTERN = /^-- ([A-Z]\d+) -+/;
 
 function loadData(path, resolver) {
@@ -168,10 +183,12 @@ function open_file(path, resolver) {
 
 function checkTokens(tokenizer, expected) {
   let i = 0;
+  let n = expected.length;
 
   while (true) {
-    let e = expected[i++];
     let t = tokenizer.getToken();
+    assert.isAtMost(i, n - 1, `more tokens than expected: ${t} [${t.start} - ${t.end}]`);
+    let e = expected[i++];
 
     let sp = new Location(e[0], e[1]);
     let ep = new Location(e[2], e[3]);
@@ -472,6 +489,63 @@ describe('Tokenizer', function () {
 
       checkTokens(tokenizer, expected);
     });
+    let s = `# You can have comments anywhere in a configuration.
+{
+  # You can have standard JSON-like key-value mapping.
+  "writer": "Oscar Fingal O'Flahertie Wills Wilde",
+  # But also use single-quotes for keys and values.
+  'a dimension': 'length: 5"',
+  # You can use identifiers for the keys.
+  string_value: 'a string value',
+  integer_value: 3,
+  float_value = 2.71828,         # you can use = instead of : as a key-value separator
+  boolean_value: true,           # these values are just like in JSON
+  opposite_boolean_value: false,
+  null_value: null
+  list_value: [
+    123,
+    4.5  # note the absence of a comma - a newline acts as a separator, too.
+    [
+      1,
+      'A',
+      2,
+      'b',  # note the trailing comma - doesn't cause errors
+    ]
+  ]  # a comma isn't needed here.
+  nested_mapping: {
+    integer_as_hex: 0x123
+    float_value: .14159,  # note the trailing comma - doesn't cause errors
+  } # no comma needed here either.
+  # You can use escape sequences ...
+  snowman_escaped: '\u2603'
+  # or not, and use e.g. utf-8 encoding.
+  snowman_unescaped: '☃'
+  # You can refer to code points outside the Basic Multilingual Plane
+  face_with_tears_of_joy: '\U0001F602'
+  unescaped_face_with_tears_of_joy: '😂'
+  # Refer to other values in this configuration.
+  refer_1: \${string_value},                  # -> 'a string value'
+  refer_2: \${list_value[1]},                 # -> 4.5
+  refer_3: \${nested_mapping.float_value},    # -> 0.14159
+  # Special values are implementation-dependent.
+  s_val_1: \`$LANG|en_GB.UTF-8\`               # -> environment var with default
+  s_val_2: \`2019-03-28T23:27:04.314159\`      # -> date/time value
+
+  # Expressions.
+  # N.B. backslash immediately followed by newline is seen as a continuation:
+  pi_approx: \${integer_value} + \
+              \${nested_mapping.float_value}   # -> 3.14159
+  sept_et_demi: \${integer_value} + \
+                \${list_value[1]}             # -> 7.5
+}`;
+    let sf = makeStream(s);
+    let tokenizer = new Tokenizer(sf);
+    let expected = [
+      [1, 1, 2, 0],
+      [2, 1, 2, 1],
+      [2, 2, 3, 0],
+    ];
+    //checkTokens(tokenizer, expected);
   });
 
   it('should handle bad tokens', function () {
@@ -1077,7 +1151,7 @@ describe('Config', function () {
     const cfg = new Config(dp);
     let cases = [
       ['circ_list[1]', 'Circular reference: circ_list[1] (42, 5)'],
-      ['circ_map.a', 'Circular reference: circ_map.a (51, 8), circ_map.b (49, 8), circ_map.c (50, 8)']
+      ['circ_map.a', 'Circular reference: circ_map.a (49, 8), circ_map.b (47, 8), circ_map.c (48, 8)']
     ];
 
     cases.forEach(function (c) {
