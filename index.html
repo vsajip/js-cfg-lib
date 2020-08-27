@@ -55,7 +55,7 @@
   </style>
   <div class="p-2 d-flex h-100">
     <div class="w-50 h-100 p-2 d-flex flex-column">
-      <div>You can edit the CFG source below, and see the results at right:</div>
+      <div style="margin-bottom: 4px">You can edit the CFG source below, and see the results at right:</div>
       <textarea id="source" class="w-100 flex-grow-1"># You can have comments anywhere in a configuration.
 {
   # You can have standard JSON-like key-value mapping.
@@ -66,6 +66,9 @@
   string_value: 'a string value',
   integer_value: 3,
   float_value = 2.71828,         # you can use = instead of : as a key-value separator
+  complex_value: 3 + 2j,
+  negative_integer: -42,
+  big_number_with_underscores: 123_456_789.012_345,
   boolean_value: true,           # these values are just like in JSON
   opposite_boolean_value: false,
   null_value: null
@@ -81,6 +84,8 @@
   ]  # a comma isn't needed here.
   nested_mapping: {
     integer_as_hex: 0x123
+    integer_as_oct: 0o123
+    integer_as_bin: 0b01101001
     float_value: .14159,  # note the trailing comma - doesn't cause errors
   } # no comma needed here either.
   # You can use escape sequences ...
