@@ -166,6 +166,24 @@ function open_file(path, resolver) {
   });
 }
 
+function checkTokens(tokenizer, expected) {
+  let i = 0;
+
+  while (true) {
+    let e = expected[i++];
+    let t = tokenizer.getToken();
+
+    let sp = new Location(e[0], e[1]);
+    let ep = new Location(e[2], e[3]);
+
+    compareObjects(t.start, sp, i);
+    compareObjects(t.end, ep, i);
+    if (t.kind == TokenKind.EOF) {
+      break;
+    }
+  }
+}
+
 describe('Location', function () {
   it('should have correct defaults', function () {
     var loc = new Location();
@@ -451,24 +469,8 @@ describe('Tokenizer', function () {
       let dp = dataFilePath('forms.cfg');
       let f = makeFileStream(dp);
       let tokenizer = new Tokenizer(f);
-      let i = 0;
 
-      while (true) {
-        let e = expected[i++];
-        let t = tokenizer.getToken();
-
-        let sp = new Location(e[0], e[1]);
-        let ep = new Location(e[2], e[3]);
-
-        // if (i === 2501) {
-        //   console.log('Failing entry');
-        // }
-        compareObjects(t.start, sp, i);
-        compareObjects(t.end, ep, i);
-        if (t.kind == TokenKind.EOF) {
-          break;
-        }
-      }
+      checkTokens(tokenizer, expected);
     });
   });
 
