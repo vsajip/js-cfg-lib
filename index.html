@@ -24,6 +24,8 @@
           integrity="sha256-9nt4LsWmLI/O24lTW89IzAKuBqEZ47l/4rh1+tH/NY8=" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.54.0/lib/codemirror.js"
           integrity="sha256-HMBMEGw3DHPgAM4ZYslxP1/75uRlvol/56G4+o+nud0=" crossorigin="anonymous"></script>
+  <!-- script src="https://cdn.jsdelivr.net/npm/sprintf-js@1.1.2/dist/sprintf.min.js"
+          integrity="sha256-hxgUqrqMYB7xMwkrDmuXuZHYgGa9D8EzdBfbC7Tf7ew=" crossorigin="anonymous"></script -->
 
   <script src="dist/config.js"></script>
 </head>
@@ -99,7 +101,7 @@
 }</textarea>
     </div>
     <div class="w-50 h-100 p-2 d-flex flex-column">
-      <div>The results of parsing the CFG at left are shown below:</div>
+      <div>The results of parsing the CFG source at left are shown below:</div>
       <textarea id="output" class="w-100 flex-grow-1"></textarea>
     </div>
   </div>
@@ -209,6 +211,22 @@
       }
     }
 
+    function formatLine(no, s) {
+      no = no.toString().padStart(5, ' ');
+      return `${no}|${s}`;
+    }
+
+    function formatLines(start, end, lines) {
+      let result = [];
+      let i;
+
+      for (i = start; i < end; i++) {
+        result.push(formatLine(i, lines[i - 1]));
+      }
+      result = result.join('\n');
+      return result ?  result + '\n': result;
+    }
+
     function populateOutput(cm) {
       let s = cm.getDoc().getValue();
       try {
@@ -217,14 +235,30 @@
         let d = cfg.asDict();
         let o = JSON.stringify(d, null, 2);
         ocm.getDoc().setValue(o);
+        ocm.setOption('mode', { name: 'javascript', json: true });
       }
       catch (err) {
-        let loc = err.location;
-        let lines = s.split('\n');
-
-        console.log(lines);
-        logTokens(s);
-        console.error('error:', err);
+        if (!err.location) {
+          console.error(err);
+        }
+        else {
+          const CONTEXT_LINES = 3;
+          let msg = err.message;
+          let loc = err.location;
+          let lines = s.split('\n');
+          let line = formatLine(loc.line, lines[loc.line - 1]);
+          let minLine = Math.max(1, loc.line - CONTEXT_LINES);
+          let maxLine = Math.min(lines.length, loc.line + CONTEXT_LINES);
+          let pre = formatLines(minLine, loc.line, lines);
+          let post = formatLines(loc.line + 1, maxLine, lines);
+          let caret = `     |${' '.padStart(loc.column - 1, ' ')}^`;
+          let o = `Error at line ${loc.line}, column ${loc.column}: ${msg}
+${pre}${line}
+${caret}
+${post}`;
+          ocm.getDoc().setValue(o);
+          ocm.setOption('mode', 'text/plain');
+        }
       }
     }
 
