@@ -24,6 +24,12 @@
           integrity="sha256-9nt4LsWmLI/O24lTW89IzAKuBqEZ47l/4rh1+tH/NY8=" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/codemirror@5.54.0/lib/codemirror.js"
           integrity="sha256-HMBMEGw3DHPgAM4ZYslxP1/75uRlvol/56G4+o+nud0=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.54.0/mode/javascript/javascript.js"
+          integrity="sha256-dY+W3GOt4MpAsoCz2NW2IrKk5LMSwKmW0ElpiXZxmVU=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/codemirror@5.54.0/mode/yaml/yaml.js"
+          integrity="sha256-Q0ephOgt1DzzxnKN9uCDEAhzfzsplcYyy3AI+F06dbI=" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@3.14.0/dist/js-yaml.min.js"
+          integrity="sha256-8mtDTinb8+d2bC/9KhCJoCRBEylWUIV/3YEt5cSUvRk=" crossorigin="anonymous"></script>
   <!-- script src="https://cdn.jsdelivr.net/npm/sprintf-js@1.1.2/dist/sprintf.min.js"
           integrity="sha256-hxgUqrqMYB7xMwkrDmuXuZHYgGa9D8EzdBfbC7Tf7ew=" crossorigin="anonymous"></script -->
 
@@ -101,7 +107,21 @@
 }</textarea>
     </div>
     <div class="w-50 h-100 p-2 d-flex flex-column">
-      <div>The results of parsing the CFG source at left are shown below:</div>
+      <div class="d-flex">
+        <div class="mr-2">
+          The results of parsing the CFG source at left are shown below. Choose the display format:
+        </div>
+        <div>
+          <div class="form-check form-check-inline">
+            <input type="radio" class="form-check-input" name="outfmt" id="jsonfmt" value="json" checked>
+            <label class="form-check-label" for="jsonfmt">JSON</label>
+          </div>
+          <div class="form-check form-check-inline">
+              <input type="radio" class="form-check-input" name="outfmt" id="yamlfmt" value="yaml">
+              <label class="form-check-label" for="yamlfmt">YAML</label>
+          </div>
+        </div>
+      </div>
       <textarea id="output" class="w-100 flex-grow-1"></textarea>
     </div>
   </div>
@@ -196,6 +216,7 @@
       }
     });
 
+    let scm;
     let ocm;
 
     function logTokens(s) {
@@ -227,15 +248,25 @@
       return result ?  result + '\n': result;
     }
 
+    let $jsonfmt;
+
     function populateOutput(cm) {
       let s = cm.getDoc().getValue();
       try {
         let stream = CFG.makeStream(s);
         let cfg = new CFG.Config(stream);
         let d = cfg.asDict();
-        let o = JSON.stringify(d, null, 2);
-        ocm.getDoc().setValue(o);
-        ocm.setOption('mode', { name: 'javascript', json: true });
+
+        if ($jsonfmt.prop('checked')) {
+          let o = JSON.stringify(d, null, 2);
+          ocm.getDoc().setValue(o);
+          ocm.setOption('mode', { name: 'javascript', json: true });
+        }
+        else {
+          let o = jsyaml.safeDump(d);
+          ocm.getDoc().setValue(o);
+          ocm.setOption('mode', 'yaml');
+        }
       }
       catch (err) {
         if (!err.location) {
@@ -270,6 +301,10 @@ ${post}`;
       let $sta = $('#source');
       let $ota = $('#output');
 
+      $jsonfmt = $('#jsonfmt');
+
+      $('#jsonfmt, #yamlfmt').on('click', function() { populateOutput(scm); });
+
       let sourceOptions = {
         lineNumbers: true,
         mode: 'cfg'
@@ -277,11 +312,17 @@ ${post}`;
       let outputOptions = {
         lineNumbers: true,
         readOnly: true,
-        mode: 'application/json'
+        mode: {
+          name: 'javascript',
+          json: true
+        }
       }
 
-      let scm = CodeMirror.fromTextArea($sta[0], sourceOptions);
+      scm = CodeMirror.fromTextArea($sta[0], sourceOptions);
       ocm = CodeMirror.fromTextArea($ota[0], outputOptions);
+
+      $sta.data('cm', scm);
+      $ota.data('cm', ocm);
 
       populateOutput(scm);
       scm.on('change', onChange);
