@@ -77,6 +77,7 @@
   boolean_value: true,           # these values are just like in JSON
   opposite_boolean_value: false,
   null_value: null
+  interpolated: `the whole gamut of emotions from ${list_value[2][1]} to ${list_value[2][3]}`
   list_value: [
     123,
     4.5  # note the absence of a comma - a newline acts as a separator, too.
@@ -84,7 +85,7 @@
       1,
       'A',
       2,
-      'b',  # note the trailing comma - doesn't cause errors
+      'B',  # note the trailing comma - doesn't cause errors
     ]
   ]  # a comma isn't needed here.
   nested_mapping: {
@@ -119,7 +120,7 @@
     <div id="outcol" class="w-50 h-100 p-2 d-flex flex-column">
       <div class="d-flex">
         <div class="mr-2">
-          The results of parsing the CFG source at left are shown below. Choose the display format:
+          Choose the display format for the results shown below:
         </div>
         <div>
           <div class="form-check form-check-inline">
