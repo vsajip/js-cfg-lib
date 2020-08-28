@@ -1,3 +1,8 @@
 module.exports = {
-  mode: 'production'
+  mode: 'production',
+  // mode: 'development',
+  output: {
+    library: 'CFG',
+    libraryTarget: 'window'
+  }
 }
