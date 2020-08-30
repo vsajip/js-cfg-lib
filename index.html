@@ -115,6 +115,10 @@
               ${nested_mapping.float_value}   # -> 3.14159
   sept_et_demi: ${integer_value} + \
                 ${list_value[1]}             # -> 7.5
+  multi_valued_1: '''abc
+def'''
+  multi_valued_2: """ghi
+jkl"""
 }</textarea>
     </div>
     <div id="outcol" class="w-50 h-100 p-2 d-flex flex-column">
@@ -281,6 +285,7 @@
           ocm.getDoc().setValue(o);
           ocm.setOption('mode', 'yaml');
         }
+        ocm.setOption('lineWrapping', false);
         $cm.removeClass('parse-error');
       }
       catch (err) {
@@ -296,7 +301,7 @@
           let minLine = Math.max(1, loc.line - CONTEXT_LINES);
           let maxLine = Math.min(lines.length, loc.line + CONTEXT_LINES);
           let pre = formatLines(minLine, loc.line, lines);
-          let post = formatLines(loc.line + 1, maxLine, lines);
+          let post = formatLines(loc.line + 1, maxLine + 1, lines);
           let caret = `     |${' '.padStart(loc.column - 1, ' ')}^`;
           let o = `Error at line ${loc.line}, column ${loc.column}: ${msg}
 ${pre}${line}
@@ -304,6 +309,7 @@ ${caret}
 ${post}`;
           ocm.getDoc().setValue(o);
           ocm.setOption('mode', 'text/plain');
+          ocm.setOption('lineWrapping', true);
           $cm.addClass('parse-error');
         }
       }
