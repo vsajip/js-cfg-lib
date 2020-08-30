@@ -49,7 +49,8 @@ const {
   isIdentifier,
   parsePath,
   pathIterator,
-  toSource
+  toSource,
+  tokenRepr
 } = config;
 
 function makeTokenizer(s) {
@@ -167,6 +168,7 @@ function loadData(path, resolver) {
   });
 }
 
+/*
 function open_file(path, resolver) {
   let f = fs.createReadStream(path, {
     encoding: 'utf-8'
@@ -180,6 +182,7 @@ function open_file(path, resolver) {
     resolver(f);
   });
 }
+ */
 
 function checkTokens(tokenizer, expected) {
   let i = 0;
@@ -658,6 +661,21 @@ describe('Tokenizer', function () {
       }
     });
   });
+
+  it('should handle token representation', function() {
+    let cases = [
+      [TokenKind.NEWLINE, 'end-of-line'],
+      [TokenKind.WORD, 'identifier'],
+      [TokenKind.INTEGER, 'whole number'],
+      [TokenKind.FLOAT, 'floating-point number'],
+      [TokenKind.COMPLEX, 'complex number'],
+      [TokenKind.STRING, 'string']
+    ];
+
+    cases.forEach(function (c) {
+      assert.equal(tokenRepr(c[0]), c[1]);
+    });
+  });
 });
 
 function expressions(ops, rule, multiple = true) {
@@ -846,7 +864,7 @@ describe('Parser', function () {
 
   it('should handle syntax errors', function () {
     const cases = [
-      ['{foo', 'mapping', 'Expected key-value separator, found'],
+      ['{foo', 'mapping', 'Expected key-value separator, but found'],
       ['   :', 'value', 'Unexpected when looking for value'],
       ['   :', 'atom', 'Unexpected: ']
     ];
@@ -937,7 +955,7 @@ describe('Parser', function () {
 
     // failure cases
     const failures = [
-      ['foo[start::step:]', 'expected ] but got :'],
+      ['foo[start::step:]', `expected ']' but got ':'`],
       ['foo[a, b:c:d]', 'expected 1 expression, found 2'],
       ['foo[a:b:c,d, e]', 'expected 1 expression, found 3'],
     ];

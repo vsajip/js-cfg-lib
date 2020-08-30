@@ -131,6 +131,19 @@ const BITXOR = '^';
 const ISNOT = 'is not';
 const NOTIN = 'not in';
 
+const TOKEN_REPR_MAPPING = Object.fromEntries([
+  [NEWLINE,  'end-of-line'],
+  [WORD, 'identifier'],
+  [INTEGER, 'whole number'],
+  [FLOAT, 'floating-point number'],
+  [COMPLEX, 'complex number'],
+  [STRING, 'string']
+]);
+
+function tokenRepr(k) {
+  return (k in TOKEN_REPR_MAPPING) ? TOKEN_REPR_MAPPING[k] : `'${k}'`;
+}
+
 class ASTNode {
   constructor(kind) {
     this.kind = kind;
@@ -885,7 +898,7 @@ class Parser {
   expect(kind) {
     let n = this.next;
     if (n.kind !== kind) {
-      let e = new ParserException(`expected ${kind} but got ${n.kind}`);
+      let e = new ParserException(`expected ${tokenRepr(kind)} but got ${tokenRepr(n.kind)}`);
 
       e.location = n.start;
       throw e;
@@ -938,7 +951,7 @@ class Parser {
     let t;
 
     if (!VALUE_STARTERS.has(kind)) {
-      let e = new ParserException(`Unexpected when looking for value: ${kind}`);
+      let e = new ParserException(`Unexpected when looking for value: ${tokenRepr(kind)}`);
 
       e.location = this.next.start;
       throw e;
@@ -989,7 +1002,7 @@ class Parser {
         this.expect(RPAREN);
         break;
       default:
-        let e = new ParserException(`Unexpected: ${kind}`);
+        let e = new ParserException(`Unexpected: ${tokenRepr(kind)}`);
 
         e.location = this.next.start;
         throw e;
@@ -1100,7 +1113,7 @@ class Parser {
 
     if ((kind !== RCURLY) && (kind !== EOF)) {
       if ((kind !== WORD) && (kind !== STRING)) {
-        const e = new ParserException(`Unexpected type for key: ${kind}`);
+        const e = new ParserException(`Unexpected type for key: ${tokenRepr(kind)}`);
 
         e.location = this.next.start;
         throw e;
@@ -1109,7 +1122,7 @@ class Parser {
         const key = this.objectKey();
         kind = this.next.kind;
         if ((kind !== COLON) && (kind !== ASSIGN)) {
-          const e = new ParserException(`Expected key-value separator, found: ${kind}`);
+          const e = new ParserException(`Expected key-value separator, but found ${tokenRepr(kind)}`);
 
           e.location = this.next.start;
           throw e;
@@ -1171,7 +1184,7 @@ class Parser {
     } else if (kind === WORD || kind === STRING || kind === EOF) {
       result = this.mappingBody();
     } else {
-      const e = new ParserException(`Unexpected type for container: ${kind}`);
+      const e = new ParserException(`Unexpected type for container: ${tokenRepr(kind)}`);
 
       e.location = this.next.start;
       throw e;
@@ -2477,6 +2490,7 @@ module.exports = {
   parsePath: parsePath,
   pathIterator: pathIterator,
   toSource: toSource,
+  tokenRepr: tokenRepr,
   Location: Location,
   TokenKind: TokenKind,
   Token: Token,
