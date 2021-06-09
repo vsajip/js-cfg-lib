@@ -1611,4 +1611,14 @@ describe('Config', function () {
       }, 50);
     }, 50);
   });
+
+  it('should handle nested includes across paths', function() {
+    const dp = dataFilePath(path.join('base', 'top.cfg'));
+    const options = {
+      includePath: [dataFilePath('derived'), dataFilePath('another')]
+    };
+    const cfg = new Config(dp, options);
+
+    assert.equal(cfg.get('level1.level2.final'), 42);
+  });
 });

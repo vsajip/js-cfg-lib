@@ -1862,6 +1862,7 @@ class Config {
       cfg.context = this.context;
       cfg.setPath(fn);
       cfg.parent = this;
+      cfg.includePath = this.includePath;
       cfg.data = cfg.wrapMapping(cnode);
       result = cfg;
     }
@@ -2397,6 +2398,9 @@ class Config {
             throw e;
           }
           if (dv === MISSING) {
+            if (e instanceof ConfigException) {
+              throw e;
+            }
             throw new ConfigException(`Not found in configuration: ${k}`);
           }
           result = dv;
