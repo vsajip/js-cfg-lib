@@ -362,7 +362,7 @@ class Tokenizer {
       }
       if (result == '\n') {
         this.location.next_line();
-      } else {
+      } else if (result !== null) {
         this.location.column++;
       }
     }
