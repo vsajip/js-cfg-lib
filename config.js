@@ -546,11 +546,16 @@ class Tokenizer {
         if (c != '\n') {
           this.pushBack(c);
         }
+        text += c;
+        end_loc.update(this.location);
+        end_loc.column -= 1;
         kind = NEWLINE;
-        this.location.next_line();
         break;
       } else if (c == '\\') {
         c = this.getChar();
+        if (c == '\r') {
+          c = this.getChar();
+        }
         if (c !== '\n') {
           let e = new TokenizerException("Unexpected character: \\");
 
