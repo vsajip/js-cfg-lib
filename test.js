@@ -887,10 +887,14 @@ describe('Parser', function () {
       files.forEach(function (fn) {
         const p = path.join(dp, fn);
         const parser = new Parser(makeFileStream(p));
-        console.log(`Processing ${p}`);
-        let node = parser.container();
+        try {
+          let node = parser.container();
 
-        assert.instanceOf(node, ASTNode);
+          assert.instanceOf(node, ASTNode);
+        }
+        catch (e) {
+          console.log(`Failed when processing ${p}: ${e.message} at ${e.location}`);
+        }
       });
     });
   });
