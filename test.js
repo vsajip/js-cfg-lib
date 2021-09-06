@@ -887,6 +887,7 @@ describe('Parser', function () {
       files.forEach(function (fn) {
         const p = path.join(dp, fn);
         const parser = new Parser(makeFileStream(p));
+        console.log(`Processing ${p}`);
         let node = parser.container();
 
         assert.instanceOf(node, ASTNode);
