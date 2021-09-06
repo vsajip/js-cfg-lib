@@ -527,6 +527,7 @@ class Tokenizer {
             break;
           }
           nl_seen = true;
+          break;
         }
         kind = NEWLINE;
         if (!nl_seen) {

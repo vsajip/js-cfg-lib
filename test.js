@@ -1306,16 +1306,26 @@ describe('Config', function () {
       includePath: [dataFilePath('base')]
     };
     const cfg = new Config(dp, options);
+    var expected;
 
     assert.equal(cfg.get('snowman_escaped'), cfg.get('snowman_unescaped'));
     assert.equal(cfg.get('snowman_unescaped'), '\u2603');
     assert.equal(cfg.get('face_with_tears_of_joy'), '\ud83d\ude02');
     assert.equal(cfg.get('unescaped_face_with_tears_of_joy'), '\ud83d\ude02');
-    expect(cfg.get('strings')).to.eql([
-      "Oscar Fingal O'Flahertie Wills Wilde", 'size: 5"',
-      "Triple quoted form\ncan span\n'multiple' lines",
-      "with \"either\"\nkind of 'quote' embedded within"
-    ]);
+    if (process.platform === "win32") {
+      expected = [
+        "Oscar Fingal O'Flahertie Wills Wilde", 'size: 5"',
+        "Triple quoted form\r\ncan span\r\n'multiple' lines",
+        "with \"either\"\r\nkind of 'quote' embedded within"
+      ];
+    } else {
+      expected = [
+        "Oscar Fingal O'Flahertie Wills Wilde", 'size: 5"',
+        "Triple quoted form\ncan span\n'multiple' lines",
+        "with \"either\"\nkind of 'quote' embedded within"
+      ];
+    }
+    expect(cfg.get('strings')).to.eql(expected);
 
     // special values
 
