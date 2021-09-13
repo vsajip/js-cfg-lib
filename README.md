@@ -1,15 +1,19 @@
-The CFG configuration format is a text format for configuration files which is similar to, and a superset of, the JSON format. It dates from [2008](https://wiki.python.org/moin/HierConfig) and has the following aims:
+The CFG configuration format is a text format for configuration files which is similar to, and a superset of, the JSON format. It dates from before its first announcement in [2008](https://wiki.python.org/moin/HierConfig) and has the following aims:
 
 * Allow a hierarchical configuration scheme with support for key-value mappings and lists.
 * Support cross-references between one part of the configuration and another.
+* Provide a string interpolation facility to easily build up configuration values from other configuration values.
 * Provide the ability to compose configurations (using include and merge facilities).
-* Provide the ability to access real application objects safely.
+* Provide the ability to access real application objects safely, where supported by the platform.
+* Be completely declarative.
 
 It overcomes a number of drawbacks of JSON when used as a configuration format:
 
 * JSON is more verbose than necessary.
 * JSON doesn’t allow comments.
+* JSON doesn’t provide first-class support for dates and multi-line strings.
 * JSON doesn’t allow trailing commas in lists and mappings.
+* JSON doesn’t provide easy cross-referencing, interpolation, or composition.
 
 Installation
 ============
@@ -48,6 +52,20 @@ undefined
 > let cfg = new config.Config("test0.cfg");
 undefined
 ```
+
+Usage in a browser
+==================
+
+In a browser, API elements are exposed in the `CFG` namespace:
+
+```
+let stream = CFG.makeStream('abc: 1');
+let cfg = new CFG.Config(stream);
+let d = cfg.asDict();
+console.log(d);
+```
+
+The above code would print the object `{ abc: 1 }` in the console.
 
 Access elements with keys
 =========================
