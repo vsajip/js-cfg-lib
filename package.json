@@ -18,7 +18,8 @@
     "chai-almost": "^1.0.1",
     "mocha": "^7.1.1",
     "webpack": "^4.42.1",
-    "webpack-cli": "^3.3.11"
+    "webpack-cli": "^3.3.11",
+    "set-value": ">=4.0.1"
   },
   "dependencies": {
     "complex.js": "^2.0.11",
