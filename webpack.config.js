@@ -4,5 +4,6 @@ module.exports = {
   output: {
     library: 'CFG',
     libraryTarget: 'window'
-  }
+  },
+  devtool: 'source-map'
 }
