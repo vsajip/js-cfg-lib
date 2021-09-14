@@ -1,8 +1,9 @@
 {
   "name": "cfg-lib",
-  "version": "0.1.1-4",
+  "version": "0.1.1-5",
   "description": "A JavaScript library for working with the CFG configuration format.",
-  "main": "dist/config.min.js",
+  "jsdelivr": "dist/config.min.js",
+  "main": "config.js",
   "scripts": {
     "test": "mocha --no-color",
     "pack": "webpack config.js -o dist/config.min.js"
