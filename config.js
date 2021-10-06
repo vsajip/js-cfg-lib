@@ -1312,7 +1312,7 @@ class Parser {
   comparison() {
     let result = this.bitorExpr();
 
-    while (COMPARISON_OPERATORS.has(this.next.kind)) {
+    if (COMPARISON_OPERATORS.has(this.next.kind)) {
       const op = this.compOp();
 
       result = new BinaryNode(op, result, this.bitorExpr());
