@@ -143,7 +143,7 @@ function loadData(path, resolver) {
   let key = null;
   let value = [];
 
-  function process_line(line) {
+  function processLine(line) {
     let m = line.match(SEPARATOR_PATTERN);
 
     if (m === null) {
@@ -158,7 +158,7 @@ function loadData(path, resolver) {
   }
 
   let p = new Promise((resolve) => {
-    reader.on('line', process_line);
+    reader.on('line', processLine);
     reader.on('close', function () {
       resolve(result);
     });
@@ -470,7 +470,7 @@ describe('Tokenizer', function () {
     });
     let positions = [];
 
-    function process_line(line) {
+    function processLine(line) {
       let parts = line.split(' ');
       // can't just pass in parseInt, as the other callback args shouldn't be forwarded
       let ints = parts.map(function (s) {
@@ -480,7 +480,7 @@ describe('Tokenizer', function () {
     }
 
     let p = new Promise((resolve) => {
-      reader.on('line', process_line);
+      reader.on('line', processLine);
       reader.on('close', function () {
         resolve(positions);
       });
@@ -1636,4 +1636,15 @@ describe('Config', function () {
 
     assert.equal(cfg.get('level1.level2.final'), 42);
   });
+
+  it('should test for files including themselves', function() {
+    const dp = dataFilePath(path.join('derived', 'recurse.cfg'));
+    const cfg = new Config(dp);
+    try {
+      const v = cfg.get('recurse');
+    }
+    catch (e) {
+      assert.equal(e.message, 'configuration cannot include itself: recurse.cfg')
+    }
+  })
 });

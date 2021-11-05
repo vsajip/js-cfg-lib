@@ -45,6 +45,10 @@ function isReadable(p) {
   }
 }
 
+function baseName(str) {
+  return str.substr(str.lastIndexOf(path.sep) + 1);
+}
+
 class Location {
   constructor(line, column) {
     this.line = (line === undefined) ? 1 : line;
@@ -1800,6 +1804,14 @@ class Config {
     return new ListWrapper(this, ln.elements);
   }
 
+  pathsAreEqual(path1, path2) {
+    let p1 = path.resolve(path1);
+    let p2 = path.resolve(path2);
+    if (process.platform == "win32")
+      return p1.toLowerCase() === p2.toLowerCase();
+    return p1 === p2;
+  }
+
   evalAt(node) {
     let fn = this.evaluate(node.operand);
 
@@ -1849,6 +1861,14 @@ class Config {
     // fn contains the path of an existing file - try and load it
     if (checkPath && !isReadable(fn)) {
       let ce = new ConfigException(`unable to read ${fn}`);
+
+      ce.location = node.operand.start;
+      throw ce;
+    }
+    // check the file isn't the same as us
+    if (this.path && this.pathsAreEqual(this.path, fn)) {
+      let bn = baseName(fn);
+      let ce = new ConfigException(`configuration cannot include itself: ${bn}`);
 
       ce.location = node.operand.start;
       throw ce;
