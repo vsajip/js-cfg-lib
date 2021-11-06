@@ -191,7 +191,8 @@ const PUNCTUATION = {
   '&': BITAND,
   '|': BITOR,
   '^': BITXOR,
-  '.': DOT
+  '.': DOT,
+  '=': ASSIGN
 };
 
 const KEYWORDS = {
@@ -692,19 +693,6 @@ class Tokenizer {
         text = gn[1];
         value = gn[2];
         break;
-      } else if (c === '=') {
-        let nc = this.getChar();
-
-        if (nc !== '=') {
-          kind = ASSIGN;
-          text += c;
-          this.pushBack(nc);
-        } else {
-          kind = EQ;
-          text += c + c;
-          end_loc.update(this.char_location);
-        }
-        break
       } else if (c in PUNCTUATION) {
         kind = PUNCTUATION[c];
         text += c;
@@ -720,6 +708,16 @@ class Tokenizer {
             kind = gn[0];
             text = gn[1];
             value = gn[2];
+          }
+        } else if (c === '=') {
+          let c = this.getChar();
+
+          if (c !== '=') {
+            this.pushBack(c);
+          } else {
+            kind = EQ;
+            text += c;
+            end_loc.update(this.char_location);
           }
         } else if (c === '-') {
           c = this.getChar();
