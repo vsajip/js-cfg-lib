@@ -640,9 +640,7 @@ class Tokenizer {
 
           if (c2 !== quote) {
             this.pushBack(c2);
-            if (c2 === null) {
-              this.char_location.update(c1_loc);
-            }
+            this.char_location.update(c1_loc);
             this.pushBack(c1);
           } else {
             multi_line = true;
