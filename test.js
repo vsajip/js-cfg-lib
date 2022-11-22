@@ -1643,7 +1643,7 @@ describe('Config', function () {
     const plist = [p1, p2];
 
     plist.forEach(function(p) {
-      const s = "test: @'foo'".replace(/foo/, p.replace('\\', '/'));
+      const s = "test: @'foo'".replace(/foo/, p.replace(/\\/g, '/'));
       const cfg = new Config(makeStream(s));
       assert.equal(cfg.get('test.computed6'), 2);
     });
