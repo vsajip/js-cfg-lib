@@ -1637,6 +1637,18 @@ describe('Config', function () {
     assert.equal(cfg.get('level1.level2.final'), 42);
   });
 
+  it('should handle absolute and relative include paths', function() {
+    const p1 = dataFilePath(path.join('derived', 'test.cfg'));
+    const p2 = path.relative(process.cwd(), p1);
+    const plist = [p1, p2];
+
+    plist.forEach(function(p) {
+      const s = "test: @'foo'".replace(/foo/, p.replace('\\', '/'));
+      const cfg = new Config(makeStream(s));
+      assert.equal(cfg.get('test.computed6'), 2);
+    });
+  });
+
   it('should test for files including themselves', function() {
     const dp = dataFilePath(path.join('derived', 'recurse.cfg'));
     const cfg = new Config(dp);
