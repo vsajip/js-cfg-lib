@@ -15,14 +15,14 @@
   "license": "BSD-3-Clause",
   "homepage": "https://docs.red-dove.com/cfg/index.html",
   "devDependencies": {
+    "ansi-regex": ">=5.0.1",
     "chai": "^4.2.0",
     "chai-almost": "^1.0.1",
     "minimatch": "^3.1.2",
     "mocha": "^7.1.1",
     "webpack": "^4.42.1",
     "webpack-cli": "^3.3.11",
-    "set-value": ">=4.0.1",
-    "ansi-regex": ">=5.0.1"
+    "set-value": ">=4.0.1"
   },
   "dependencies": {
     "complex.js": "^2.0.11",
