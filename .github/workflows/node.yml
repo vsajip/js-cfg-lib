@@ -5,9 +5,14 @@ name: Node.js CI
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, bump-deps ]
+    paths:
+        - '!*.md'
+
   pull_request:
     branches: [ master ]
+    paths:
+        - '!*.md'
 
 jobs:
   build:
@@ -16,7 +21,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: [12.x, 14.x, 16.x]
+        node-version: [12.x, 14.x, 16.x, 18.x]
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
 
     steps:
