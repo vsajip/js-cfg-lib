@@ -1644,7 +1644,6 @@ describe('Config', function () {
 
     plist.forEach(function(p) {
       const s = "test: @'foo'".replace(/foo/, p.replace('\\', '/'));
-      console.log(s);
       const cfg = new Config(makeStream(s));
       assert.equal(cfg.get('test.computed6'), 2);
     });
