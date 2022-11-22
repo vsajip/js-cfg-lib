@@ -1823,7 +1823,8 @@ class Config {
     //   throw new ConfigException('No configuration loaded');
     // }
     if (!this.rootDir) {
-      throw new ConfigException('No root directory found');
+      // throw new ConfigException('No root directory found');
+      this.rootDir = process.cwd();
     }
     let checkPath = true;
 
