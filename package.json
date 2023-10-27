@@ -19,7 +19,7 @@
     "chai": "^4.2.0",
     "chai-almost": "^1.0.1",
     "minimatch": "^4.0.0",
-    "mocha": "^7.1.1",
+    "mocha": "^10.2.0",
     "webpack": "^4.42.1",
     "webpack-cli": "^3.3.11",
     "set-value": ">=4.0.1"
