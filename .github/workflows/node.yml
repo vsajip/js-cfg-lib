@@ -20,7 +20,9 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        node-version: ['16', '18', '20', '22', 'latest']
+        # 'latest' removed from matrix, pending move from require to import as required
+        # by 'latest'
+        node-version: ['16', '18', '20', '22']
         # See supported Node.js release schedule at https://nodejs.org/en/about/releases/
         #exclude:
           # macos-latest does not have Node 14
